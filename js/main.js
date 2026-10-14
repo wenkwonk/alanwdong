@@ -31,6 +31,7 @@ const network = createNetwork(networkEl, LAYERS, {
   onInput: toggleInput, microSrc: SITE.micrograph.src,
 });
 for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
+$('.page-intro').append(...SITE.intro.map((text) => Object.assign(document.createElement('p'), { textContent: text })));
 
 // The whole UI state: the filters in your network. Each conv filter has a
 // `layer` (0-based); the softmax output has none. `applied` marks the ones
