@@ -18,9 +18,23 @@
         <canvas id="name-canvas" role="img" aria-label="Alan Dong"></canvas>
       </div>
       <p class="subtitle">ML for biological images.</p>
+      <p id="classification" class="classification" hidden>Classification: Alan · 99.2%</p>
+
+      <div class="stack-row">
+        <ol id="chips" class="chips" aria-label="Applied layers"></ol>
+        <button id="reset" class="reset" type="button" hidden>Reset</button>
+      </div>
+
+      <aside class="palette" aria-labelledby="palette-hint">
+        <p id="palette-hint" class="hint">
+          <span class="hint-drag">Drag a layer onto my name.</span>
+          <span class="hint-tap">Tap a layer to apply it.</span>
+        </p>
+        <div id="tiles" class="tiles"></div>
+      </aside>
     </header>
 
-    <div id="tiles" class="tiles" aria-label="Layers"></div>
+    <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>
   </main>
 </body>
 </html>

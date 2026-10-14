@@ -71,28 +71,192 @@ body {
   letter-spacing: 0.01em;
 }
 
-.tiles {
-  position: fixed;
-  left: 24px;
-  bottom: 24px;
+.classification {
+  margin: 10px 0 0;
+  font: 12px/1 var(--mono);
+  color: var(--muted);
+}
+
+/* Layer palette: a column on the left edge on wide screens,
+   a wrapping row under the name on narrow ones. */
+.hero { position: relative; }
+
+.palette {
+  position: absolute;
+  left: 32px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hint {
+  margin: 0;
+  font: 12px/1.4 var(--mono);
+  color: var(--muted);
+  max-width: 18ch;
+}
+
+.hint-tap { display: none; }
+
+@media (hover: none) {
+  .hint-drag { display: none; }
+  .hint-tap { display: inline; }
+}
+
+.tiles {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .tile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font: 13px/1 var(--mono);
   color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 9px 12px;
-  cursor: pointer;
-  transition: border-color 0.15s;
+  cursor: grab;
+  touch-action: none;   /* let pointer events drive dragging on touch */
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color 0.15s, opacity 0.15s;
 }
 
 .tile:hover { border-color: var(--muted); }
+.tile.is-applied { border-color: var(--ink); }
+.tile.is-dragging { opacity: 0.35; }
 
-.tile:focus-visible {
+.tile-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.tile-count:empty { display: none; }
+
+.tile:focus-visible,
+.chip-remove:focus-visible,
+.reset:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+
+.tile-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  pointer-events: none;
+  cursor: grabbing;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+  border-color: var(--ink);
+}
+
+/* Drop target feedback on the name while a tile is being dragged. */
+.stage {
+  border-radius: 12px;
+  outline: 1px dashed transparent;
+  outline-offset: -2px;
+  transition: outline-color 0.15s, background-color 0.15s;
+}
+.stage.drop-armed { outline-color: var(--line); }
+.stage.drop-ready {
+  outline-color: var(--muted);
+  background-color: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+/* Applied-layer chips and Reset under the subtitle. */
+.stack-row {
+  min-height: 34px;
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 16px;
+}
+
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 26px;
+}
+.chips:empty { display: none; }
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font: 12px/1 var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 3px 3px 10px;
+}
+
+.chip + .chip::before {
+  content: '→';
+  position: absolute;
+  left: -19px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.chip-remove,
+.reset {
+  font: 12px/1 var(--mono);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.chip-remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 14px;
+}
+.chip-remove:hover { color: var(--ink); background: var(--line); }
+
+.reset {
+  padding: 6px 8px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.reset:hover { color: var(--ink); }
+
+@media (max-width: 1180px) {
+  .palette {
+    position: static;
+    transform: none;
+    margin-top: 28px;
+    align-items: center;
+  }
+  .hint { max-width: none; text-align: center; }
+  .tiles {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (min-width: 1181px) {
+  .stage { width: min(100% - 440px, 960px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
 }

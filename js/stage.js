@@ -14,6 +14,7 @@ export function createStage(canvas, text) {
   const sctx = scratch.getContext('2d', { willReadFrequently: true });
 
   let w = 0, h = 0;       // backing-store size in device pixels
+  let px = 1;             // device pixels per CSS pixel
   let source = null;      // Float32Array ink coverage of the plain name
   let stack = [];         // layer ids, in application order
   let quality = 1;        // 1 = full DPR, 0.5 = reduced (set if too slow)
@@ -25,6 +26,7 @@ export function createStage(canvas, text) {
     const key = `${cssW}@${scale}`;
     if (!cssW || key === sizeKey) return;
     sizeKey = key;
+    px = scale;
 
     // Fit the name to ~86% of the available width (measured at 100px with
     // the same relative letter spacing it is drawn with).
@@ -55,8 +57,8 @@ export function createStage(canvas, text) {
     render();
   }
 
-  function setTracking(px) {
-    if ('letterSpacing' in sctx) sctx.letterSpacing = `${-0.02 * px}px`;
+  function setTracking(fontSize) {
+    if ('letterSpacing' in sctx) sctx.letterSpacing = `${-0.02 * fontSize}px`;
   }
 
   let slowRuns = 0;
@@ -64,8 +66,10 @@ export function createStage(canvas, text) {
     if (!source) return;
     const t0 = performance.now();
 
+    // Conv layers run in order; output stages (softmax) always run last.
     let buf = source;
-    for (const id of stack) buf = LAYERS[id].run(buf, w, h);
+    const ordered = [...stack.filter((id) => !LAYERS[id].output), ...stack.filter((id) => LAYERS[id].output)];
+    for (const id of ordered) buf = LAYERS[id].run(buf, w, h, px, source);
     paint(buf);
 
     // A single slow frame is usually JIT warm-up; only downscale if it persists.
