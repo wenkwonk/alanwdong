@@ -1,5 +1,8 @@
+// 3 × 4 = 12 filters: enough for every conv kernel 3 times (each section
+// at full depth). Wider layers rather than more of them keeps the feature
+// maps readable, since layers spread across the screen.
 export const MAX_LAYERS = 3;
-export const MAX_FILTERS = 3;   // per layer
+export const MAX_FILTERS = 4;   // per layer
 const DRAG_THRESHOLD = 4;       // px before a press on a filter becomes a drag
 
 // The network panel. The input at the top, then each conv layer as a group
