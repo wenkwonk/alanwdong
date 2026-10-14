@@ -1,24 +1,34 @@
 import { LAYERS } from './layers.js';
-import { maxPool } from './conv.js';
+import { maxPool, relu } from './conv.js';
 import { rasterize } from './raster.js';
 import { paint, theme } from './paint.js';
 import { drawSweep } from './sweep.js';
 
+// Hand-set weight of the dense layer: each section's logit is this times
+// the mean of its own channel's pooled features (a block-diagonal weight
+// matrix with zero bias). Not trained; chosen so differences are visible.
+const DENSE_WEIGHT = 8;
+
 // The forward pass, animated. The name is rasterized and split into one
-// feature map per conv channel; each channel's kernel flies in and sweeps
-// its map (repeats chain the convolution); the maps are max-pooled down to
-// a few blocks, merge into one, and the page is generated from it.
+// feature map per conv channel. Each channel's kernel flies in and sweeps
+// its map (repeats chain conv → ReLU). The maps are max-pooled, flattened
+// into one feature vector, and a dense layer + softmax scores each section;
+// the page is generated from that, with sections in score order.
 //
 //   canvas     the name's <canvas>
 //   area       viewport rect to lay the feature maps out in
-//   channels   [{ id, count, from }]  (from: rect the tile flies from)
+//   channels   [{ id, count, from, section, title }]
+//              (from: rect the tile flies from; section: the class it feeds)
 //   softmax    whether the network ends in a softmax output layer
 //   fly        (id, fromRect, toPoint) => Promise, the automatic drag
-//   generate   (point, instant) => Promise, shows the page growing from point
+//   generate   (point, instant, ranking) => Promise, shows the page growing
+//              from point; ranking is section ids, highest score first
+//   instant    skip all animation (still computes everything)
 //
 // Any click or keypress skips to the end.
-export async function forwardPass({ canvas, area, channels, softmax, fly, generate }) {
+export async function forwardPass({ canvas, area, channels, softmax, fly, generate, instant }) {
   const ctl = createSkip();
+  if (instant) ctl.skip();
   const root = document.createElement('div');
   try {
     const nameRect = canvas.getBoundingClientRect();
@@ -27,20 +37,25 @@ export async function forwardPass({ canvas, area, channels, softmax, fly, genera
     const colors = theme();
     const input = paint(src.buf, src.w, src.h, colors);
 
-    // Each channel's output: its kernel applied `count` times in a row.
+    // Each channel: (conv → ReLU) × count, then max-pool down to a few blocks.
     const maps = channels.map((ch) => {
       let b = src.buf;
-      for (let i = 0; i < ch.count; i++) b = LAYERS[ch.id].run(b, src.w, src.h, scale * 2, src.buf);
-      return { ...ch, out: b, output: paint(b, src.w, src.h, colors) };
+      for (let i = 0; i < ch.count; i++) b = relu(LAYERS[ch.id].run(b, src.w, src.h, scale * 2, src.buf));
+      const levels = [];
+      let lv = { buf: b, w: src.w, h: src.h };
+      while (lv.w > 16 && levels.length < 6) levels.push((lv = maxPool(lv.buf, lv.w, lv.h)));
+      return { ...ch, out: b, output: paint(b, src.w, src.h, colors), levels, features: lv.buf };
     });
+    const head = classify(maps, softmax);
 
     root.className = 'fp';
     Object.assign(root.style, { left: area.left + 'px', top: area.top + 'px', width: area.width + 'px', height: area.height + 'px' });
     root.setAttribute('aria-hidden', 'true');
     document.body.append(root);
-    let merge = { x: nameRect.left + nameRect.width / 2, y: nameRect.top + nameRect.height / 2 };
+    canvas.parentElement.style.visibility = 'hidden';
+    const merge = center(area);
 
-    if (maps.length) {
+    if (maps.length && !ctl.skipped) {
       // Split: copies of the name move from where it is into a grid.
       const slots = layout(maps.length, area, src.w / src.h);
       for (const [i, m] of maps.entries()) {
@@ -54,19 +69,18 @@ export async function forwardPass({ canvas, area, channels, softmax, fly, genera
         m.ctx = m.cv.getContext('2d');
         m.ctx.drawImage(input, 0, 0);
         const label = document.createElement('figcaption');
-        label.textContent = LAYERS[m.id].label + (m.count > 1 ? ` ×${m.count}` : '');
+        label.textContent = LAYERS[m.id].label + (m.count > 1 ? ` ×${m.count}` : '') + ' → ReLU';
         m.fig.append(m.cv, label);
         root.append(m.fig);
         m.k = src.w / s.w;
       }
-      canvas.parentElement.style.visibility = 'hidden';
       await Promise.all(maps.map((m, i) => {
         const s = slots[i];
         const dx = nameRect.left - area.left - s.x, dy = nameRect.top - area.top - s.y;
         return ctl.animate(m.fig, [
           { transform: `translate(${dx}px, ${dy}px) scale(${nameRect.width / s.w})`, opacity: i ? 0 : 1 },
           { transform: 'none', opacity: 1 },
-        ], { duration: 600, easing: 'cubic-bezier(.2,.8,.2,1)' });
+        ], { duration: 500, easing: 'cubic-bezier(.2,.8,.2,1)' });
       }));
 
       // Kernels fly in from the network, one per map, all at once.
@@ -75,18 +89,15 @@ export async function forwardPass({ canvas, area, channels, softmax, fly, genera
       }
 
       // Sweep every map at once.
-      await ctl.frames(1000, (p) => {
+      await ctl.frames(900, (p) => {
         for (const m of maps) drawSweep(m.ctx, input, m.output, LAYERS[m.id], p, m.k, colors);
       });
 
       // Max-pool each map, a level at a time, while the maps shrink.
       for (const m of maps) {
-        m.levels = [];
-        let lv = { buf: m.out, w: src.w, h: src.h };
-        while (lv.w > 16 && m.levels.length < 6) m.levels.push((lv = maxPool(lv.buf, lv.w, lv.h)));
         m.ctx.imageSmoothingEnabled = false;
         m.fig.style.transformOrigin = '50% 50%';   // shrink in place
-        ctl.animate(m.fig, [{ transform: 'none' }, { transform: 'scale(0.7)' }], { duration: 1100, easing: 'ease-in-out' });
+        ctl.animate(m.fig, [{ transform: 'none' }, { transform: 'scale(0.7)' }], { duration: 900, easing: 'ease-in-out' });
       }
       const steps = Math.max(...maps.map((m) => m.levels.length));
       for (let i = 0; i < steps && !ctl.skipped; i++) {
@@ -95,41 +106,99 @@ export async function forwardPass({ canvas, area, channels, softmax, fly, genera
           m.ctx.clearRect(0, 0, src.w, src.h);
           m.ctx.drawImage(paint(lv.buf, lv.w, lv.h, colors), 0, 0, src.w, src.h);
         }
-        await ctl.wait(1100 / steps);
+        await ctl.wait(900 / steps);
       }
 
-      // Merge: the pooled maps fly into one block in the middle.
-      merge = center(area);
+      // Flatten: the pooled maps fly into the middle and become one vector.
       await Promise.all(maps.map((m) => {
-        const r = m.fig.getBoundingClientRect();
-        const c = center(r);
+        const c = center(m.fig.getBoundingClientRect());
         return ctl.animate(m.fig, [
           { transform: 'scale(0.7)', opacity: 1 },
           { transform: `translate(${merge.x - c.x}px, ${merge.y - c.y}px) scale(0.08)`, opacity: 0 },
-        ], { duration: 600, easing: 'cubic-bezier(.6,0,.4,1)' });
+        ], { duration: 500, easing: 'cubic-bezier(.6,0,.4,1)' });
       }));
     }
 
-    const block = document.createElement('div');
-    block.className = 'fp-merged';
-    Object.assign(block.style, { left: merge.x - area.left + 'px', top: merge.y - area.top + 'px' });
-    root.append(block);
-    canvas.parentElement.style.visibility = 'hidden';
-    await ctl.animate(block, [{ transform: 'translate(-50%, -50%) scale(0)' }, { transform: 'translate(-50%, -50%) scale(1)' }],
-      { duration: 250, easing: 'ease-out' });
-    if (softmax) {
-      block.classList.add('fp-softmax');
-      await ctl.animate(block, [{ boxShadow: '0 0 0 0 var(--ink)' }, { boxShadow: '0 0 0 14px transparent' }], { duration: 500 });
+    // Classifier head: flattened features → dense → softmax (or raw logits).
+    if (head.length && !ctl.skipped) {
+      const panel = headPanel(maps, head, softmax, colors);
+      Object.assign(panel.style, { left: merge.x - area.left + 'px', top: merge.y - area.top + 'px' });
+      root.append(panel);
+      await ctl.animate(panel, [{ transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 }, { transform: 'translate(-50%, -50%)', opacity: 1 }],
+        { duration: 250, easing: 'ease-out' });
+      await Promise.all([...panel.querySelectorAll('.fp-bar i')].map((bar) =>
+        ctl.animate(bar, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 500, easing: 'ease-out' })));
+      await ctl.wait(700);
     }
 
     root.remove();
     canvas.parentElement.style.visibility = '';
-    await generate(merge, ctl.skipped);
+    await generate(merge, ctl.skipped, head.map((h) => h.section));
   } finally {
     root.remove();
     canvas.parentElement.style.visibility = '';
     ctl.dispose();
   }
+}
+
+// Dense layer + softmax over the pooled features. One class (section) per
+// channel. Returns [{ section, title, z, p }] sorted by score, highest first;
+// `p` is null when the network has no softmax layer.
+function classify(maps, softmax) {
+  const rows = maps.map((m) => {
+    let sum = 0;
+    for (const v of m.features) sum += v;
+    return { section: m.section, title: m.title, z: DENSE_WEIGHT * sum / m.features.length, p: null };
+  });
+  if (softmax && rows.length) {
+    const zmax = Math.max(...rows.map((r) => r.z));
+    const e = rows.map((r) => Math.exp(r.z - zmax));
+    const total = e.reduce((a, b) => a + b, 0);
+    rows.forEach((r, i) => (r.p = e[i] / total));
+  }
+  return rows.sort((a, b) => (b.p ?? b.z) - (a.p ?? a.z));
+}
+
+// The head, drawn: a strip of the actual flattened feature values, then a
+// bar per class with its probability (or logit).
+function headPanel(maps, head, softmax, colors) {
+  const panel = document.createElement('div');
+  panel.className = 'fp-head';
+
+  const all = maps.flatMap((m) => [...m.features]);
+  const n = Math.min(24, all.length);
+  const strip = document.createElement('div');
+  strip.className = 'fp-flat';
+  for (let i = 0; i < n; i++) {
+    const v = Math.min(1, all[Math.floor((i * all.length) / n)]);
+    const cell = document.createElement('i');
+    cell.style.background = `rgba(${colors.ink}, ${0.08 + 0.92 * v})`;
+    strip.append(cell);
+  }
+
+  const table = document.createElement('div');
+  table.className = 'fp-scores';
+  const title = document.createElement('p');
+  title.textContent = softmax ? 'flatten → dense → softmax' : 'flatten → dense → logits';
+  table.append(title);
+  const max = Math.max(...head.map((h) => Math.abs(h.p ?? h.z)), 1e-6);
+  for (const h of head) {
+    const row = document.createElement('div');
+    row.className = 'fp-row';
+    const name = document.createElement('span');
+    name.textContent = h.title;
+    const bar = document.createElement('span');
+    bar.className = 'fp-bar';
+    const fill = document.createElement('i');
+    fill.style.width = `${(100 * Math.abs(h.p ?? h.z)) / (h.p != null ? 1 : max)}%`;
+    bar.append(fill);
+    const val = document.createElement('span');
+    val.textContent = (h.p ?? h.z).toFixed(h.p != null ? 3 : 2);
+    row.append(name, bar, val);
+    table.append(row);
+  }
+  panel.append(strip, table);
+  return panel;
 }
 
 // Lay out n maps of aspect `ar` (w/h) in a centred grid inside `area`.
@@ -174,6 +243,7 @@ function createSkip() {
         waiters.add(done);
       });
     },
+    skip: () => skip(),
     race(promise) {
       return Promise.race([promise, new Promise((r) => (ctl.skipped ? r() : waiters.add(r)))]);
     },

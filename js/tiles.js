@@ -54,7 +54,7 @@ export function createTiles(container, layers, targets, choose) {
 }
 
 // The tile shows what the layer really is: its 3×3 weights (or, for the
-// softmax output layer, a probability vector), its name, and a repeat count.
+// softmax output layer, its formula), its name, and a repeat count.
 function tileFace(layer) {
   const face = document.createDocumentFragment();
   const grid = document.createElement('span');
@@ -67,12 +67,8 @@ function tileFace(layer) {
       grid.append(c);
     }
   } else {
-    grid.className = 'tile-kernel tile-probs';
-    for (const v of layer.probs) {
-      const c = document.createElement('span');
-      c.textContent = v;
-      grid.append(c);
-    }
+    grid.className = 'tile-kernel tile-formula';
+    grid.textContent = layer.formula;
   }
   const matrix = document.createElement('span');
   matrix.className = 'tile-matrix';

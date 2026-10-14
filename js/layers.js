@@ -11,7 +11,9 @@ const tap = (f, k) => Math.max(1, Math.round(k * f));
 // Every tile is one entry here.
 //   label    shown on the tile and in the layer chips
 //   kernel   the 3×3 weights drawn on the tile and in the sweep window
+//            (layers without one show `formula` instead)
 //   divisor  shown as "÷n" when the weights are scaled
+//   output   marks the softmax output layer (no kernel, no `run`)
 //   run(x, w, h, f, src)
 //            convolves image `x` (w × h ink values) and returns the result.
 //            `f` is the feature size in pixels: big text (the name) gets a
@@ -73,12 +75,8 @@ export const LAYERS = {
   softmax: {
     label: 'output · softmax',
     output: true,
-    probs: ['.992', '.006', '.002'],
-    // Not a kernel: the output layer. Keeps the input crisp and lets it glow.
-    run(x, w, h, f, src) {
-      const glow = convolveAtScale(src, w, h, tap(f, 2), G, G, G, G);
-      for (let i = 0; i < glow.length; i++) glow[i] = Math.max(0.6 * glow[i], src[i]);
-      return glow;
-    },
+    formula: 'eᶻ/Σeᶻ',
+    // Not a kernel: the output layer. It turns the dense layer's scores into
+    // probabilities at the end of the forward pass (see forward.js).
   },
 };

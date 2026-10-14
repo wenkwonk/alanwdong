@@ -14,12 +14,11 @@ const pageView = $('.page-view');
 const networkEl = $('#network');
 const status = $('#status');
 
-for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
-
 createStage(canvas, SITE.name);
 const tiles = createTiles($('#tiles'), LAYERS, [networkEl, stageEl], addLayer);
 const sections = createSections($('#sections'), LAYERS, moreDetail);
 const network = createNetwork(networkEl, LAYERS, { onRun: run, onRemove: removeLayer, onReset: reset });
+for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
 
 // The whole UI state: the layers in your network, in the order added.
 // `applied` marks the ones included in the last run. The page shows a section
@@ -48,53 +47,50 @@ function run() {
   enqueue(async () => {
     if (!stack.some((l) => !l.applied)) return;
     running = true;
-    const finish = () => {
-      for (const l of stack) l.applied = true;
-      showName = false;
-      update();
-    };
+    const animate = !reducedMotion();
 
-    if (reducedMotion()) {
-      finish();
+    // The input is always the name: on a re-run, collapse the page back to it.
+    showName = true;
+    window.scrollTo({ top: 0 });
+    if (animate && stack.some((l) => l.applied)) {
+      crossfade();
+      await sleep(300);
     } else {
-      if (stack.some((l) => l.applied)) {
-        // Re-run: collapse the page back into the name first.
-        showName = true;
-        window.scrollTo({ top: 0 });
-        crossfade();
-        await sleep(300);
-      } else {
-        update();
-      }
-
-      // One channel per conv kernel; repeats deepen that channel.
-      const channels = [];
-      for (const l of ordered()) {
-        if (LAYERS[l.id].output) continue;
-        const ch = channels.find((c) => c.id === l.id);
-        if (ch) ch.count++;
-        else channels.push({ id: l.id, count: 1, key: l.key });
-      }
-      for (const ch of channels) ch.from = network.plateRect(ch.key);
-
-      await forwardPass({
-        canvas,
-        area: mapArea(),
-        channels,
-        softmax: stack.some((l) => LAYERS[l.id].output),
-        fly: tiles.fly,
-        generate: (point, instant) => {
-          finish();
-          window.scrollTo({ top: 0 });
-          if (!instant) return growFrom(point);
-        },
-      });
+      update();
     }
+
+    // One channel per conv kernel; repeats deepen that channel.
+    const channels = [];
+    for (const l of ordered()) {
+      if (LAYERS[l.id].output) continue;
+      const ch = channels.find((c) => c.id === l.id);
+      if (ch) ch.count++;
+      else channels.push({ id: l.id, count: 1, key: l.key, section: sectionFor(l.id).id, title: sectionFor(l.id).title });
+    }
+    for (const ch of channels) ch.from = network.plateRect(ch.key);
+
+    let ranking = [];
+    await forwardPass({
+      canvas,
+      area: mapArea(),
+      channels,
+      softmax: stack.some((l) => LAYERS[l.id].output),
+      fly: tiles.fly,
+      instant: !animate,
+      generate: (point, instant, rank) => {
+        ranking = rank;
+        sections.setOrder(rank);
+        for (const l of stack) l.applied = true;
+        showName = false;
+        update();
+        if (!instant) return growFrom(point);
+      },
+    });
 
     running = false;
     update();
-    const names = [...new Set(ordered().map((l) => sectionFor(l.id).title))];
-    announce(`Network ran. Showing ${names.join(', ')}.`);
+    const titles = ranking.map((id) => sections.sections.find((s) => s.id === id).title);
+    announce(`Network ran. Sections in order of score: ${titles.join(', ') || 'none'}.`);
   });
 }
 

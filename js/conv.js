@@ -119,3 +119,9 @@ export function maxPool(src, w, h) {
   }
   return { buf: out, w: pw, h: ph };
 }
+
+// ReLU, in place: negative activations become 0.
+export function relu(buf) {
+  for (let i = 0; i < buf.length; i++) if (buf[i] < 0) buf[i] = 0;
+  return buf;
+}

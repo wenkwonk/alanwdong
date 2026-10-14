@@ -13,6 +13,7 @@ export const SITE = {
   subtitle: 'ML for biological images.',
   hintDrag: 'Drag layers into your network, then press Run.',
   hintTap: 'Tap layers to add them, then press Run.',
+  networkNote: 'Hand-set 3×3 kernels · real convolution, ReLU, max-pooling and softmax · not a trained model.',
 };
 
 export const SECTIONS = [

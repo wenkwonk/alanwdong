@@ -46,6 +46,13 @@ export function createSections(root, layers, onMore) {
     },
 
     element: (id) => views[id].el,
+
+    // Put sections in this order (ids), followed by any not listed, in
+    // their content.js order.
+    setOrder(ids) {
+      const rest = SECTIONS.map((s) => s.id).filter((id) => !ids.includes(id));
+      for (const id of [...ids, ...rest]) root.append(views[id].el);
+    },
   };
 }
 

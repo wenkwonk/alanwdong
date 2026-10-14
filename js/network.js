@@ -13,7 +13,8 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset }) {
     </ol>
     <p class="net-empty">Drop layers here.</p>
     <button type="button" class="net-run"></button>
-    <button type="button" class="net-reset">Reset</button>`;
+    <button type="button" class="net-reset">Reset</button>
+    <p class="net-note" data-text="networkNote"></p>`;
   const list = root.querySelector('.net-stack');
   const empty = root.querySelector('.net-empty');
   const runBtn = root.querySelector('.net-run');
