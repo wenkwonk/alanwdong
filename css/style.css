@@ -246,31 +246,6 @@ h1 {
 .running-sum.on { opacity: 1; }
 .running-sum b { color: var(--ink); font-weight: 600; }
 
-.loss-chart {
-  position: fixed;
-  right: 20px;
-  bottom: 16px;
-  margin: 0;
-  padding: 8px 10px 4px;
-  width: 200px;
-  background: rgb(0 0 0 / 0.8);
-  border: 1px solid rgb(255 255 255 / 0.12);
-  border-radius: 8px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-}
-.loss-chart.on { opacity: 1; }
-.loss-chart figcaption {
-  font: 10px/1 var(--mono);
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-.loss { display: block; width: 100%; height: auto; overflow: visible; }
-.loss .axis { stroke: rgb(255 255 255 / 0.25); stroke-width: 1; }
-.loss .tick { fill: var(--faint); font: 8px var(--mono); }
-.loss .curve { fill: none; stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
-.loss .dot { fill: #fff; }
 .running-sum span { transition: color 0.3s ease; }
 .running-sum span.on { color: var(--ink); }
 
@@ -318,7 +293,6 @@ a:focus-visible {
   .node-box { text-align: left; }
   .leaf { margin-top: 12px; max-width: none; text-align: left; }
   .split { left: auto; margin-left: 0; margin-bottom: 6px; }
-  .loss-chart { width: 140px; right: 10px; bottom: 52px; }
   .running-sum { font-size: 12px; }
 }
 

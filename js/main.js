@@ -69,32 +69,6 @@ const sumValue = h('b', {}, '0.00');
 sumEl.append('ŷ = ', ...terms.flatMap((t, i) => [i ? ' + ' : '', h('span', {}, t)]), ' = ', sumValue);
 const sumTerms = [...sumEl.querySelectorAll('span')];
 
-// ---------- Training loss chart ----------
-// Residual (1 − ŷ) after each tree, drawn as far as the reader has scrolled.
-
-const loss = [1, ...contrib.map((_, k) => Math.max(0, total - contrib.slice(0, k + 1).reduce((a, b) => a + b, 0)) / total)];
-const chart = document.querySelector('.loss');
-const CW = 180, CH = 84, PAD = { l: 26, r: 8, t: 8, b: 18 };
-const cx = (x) => PAD.l + (x / TREES.length) * (CW - PAD.l - PAD.r);
-const cy = (v) => PAD.t + (1 - v) * (CH - PAD.t - PAD.b);
-chart.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
-chart.innerHTML = `
-  <line class="axis" x1="${PAD.l}" y1="${PAD.t}" x2="${PAD.l}" y2="${CH - PAD.b}"/>
-  <line class="axis" x1="${PAD.l}" y1="${CH - PAD.b}" x2="${CW - PAD.r}" y2="${CH - PAD.b}"/>
-  <text class="tick" x="${PAD.l - 4}" y="${cy(1) + 3}" text-anchor="end">1</text>
-  <text class="tick" x="${PAD.l - 4}" y="${cy(0) + 3}" text-anchor="end">0</text>
-  <text class="tick" x="${CW - PAD.r}" y="${CH - 4}" text-anchor="end">trees</text>
-  <polyline class="curve" points=""/>
-  <circle class="dot" r="2.5"/>`;
-const curve = chart.querySelector('.curve');
-const dot = chart.querySelector('.dot');
-
-// Loss at fractional training progress x ∈ [0, number of trees].
-const lossAt = (x) => {
-  const k = Math.min(Math.floor(x), TREES.length - 1);
-  return loss[k] + (loss[k + 1] - loss[k]) * Math.min(1, x - k);
-};
-
 // ---------- Branches ----------
 // Each branch is a path ending at a node or leaf. Paths use pathLength=1 so
 // stroke-dashoffset can draw them on in proportion to scroll.
@@ -169,7 +143,7 @@ function update() {
   const heroGone = document.querySelector('.hero').getBoundingClientRect().bottom < vh * 0.4;
   const outroIn = document.querySelector('.outro').getBoundingClientRect().top < vh * 0.75;
   sumEl.classList.toggle('on', heroGone && !outroIn);
-  // Training progress: how far the middle of the screen is through each tree.
+  // How far the middle of the screen is through the trees (0 … number of trees).
   let x = 0;
   [...treesEl.children].forEach((section, i) => {
     const r = section.getBoundingClientRect();
@@ -177,15 +151,11 @@ function update() {
     x += frac;
     sumTerms[i].classList.toggle('on', frac > 0.15);
   });
-  const l = lossAt(x);
-  sumValue.textContent = (total * (1 - l)).toFixed(2);
-  const pts = [];
-  for (let k = 0; k <= Math.floor(x); k++) pts.push(`${cx(k)},${cy(loss[k])}`);
-  pts.push(`${cx(x)},${cy(l)}`);
-  curve.setAttribute('points', pts.join(' '));
-  dot.setAttribute('cx', cx(x));
-  dot.setAttribute('cy', cy(l));
-  chart.parentElement.classList.toggle('on', heroGone && !outroIn);
+  // ŷ so far: each tree adds its path value in proportion to how far
+  // through it the reader is.
+  const k = Math.min(Math.floor(x), TREES.length);
+  const done = contrib.slice(0, k).reduce((a, b) => a + b, 0);
+  sumValue.textContent = (done + (k < TREES.length ? contrib[k] * (x - k) : 0)).toFixed(2);
 }
 
 let frame = 0;
