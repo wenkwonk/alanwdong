@@ -5,7 +5,6 @@ import { createTiles } from './tiles.js';
 import { createSections } from './sections.js';
 import { createNetwork, MAX_LAYERS, MAX_FILTERS } from './network.js';
 import { forwardPass } from './forward.js';
-import { createMicrograph } from './micro.js';
 
 const $ = (sel) => document.querySelector(sel);
 const stageEl = $('#stage');
@@ -14,21 +13,12 @@ const nameView = $('.name-view');
 const pageView = $('.page-view');
 const networkEl = $('#network');
 const status = $('#status');
-const inputName = $('.input-name');
-const inputMicro = $('.input-micro');
-const microCanvas = $('#micro-canvas');
 
 createStage(canvas, SITE.name);
-createMicrograph(microCanvas, SITE.micrograph.src);
-microCanvas.setAttribute('aria-label', SITE.micrograph.alt);
-const credit = $('.micro-credit a');
-credit.textContent = SITE.micrograph.credit;
-credit.href = SITE.micrograph.href;
 const tiles = createTiles($('#tiles'), LAYERS, [networkEl, stageEl], addLayer);
 const sections = createSections($('#sections'), LAYERS, moreDetail);
 const network = createNetwork(networkEl, LAYERS, {
   onRun: run, onRemove: removeLayer, onReset: reset, onMove: moveLayer, onSelect: selectLayer, onAddLayer: addNetworkLayer,
-  onInput: toggleInput, microSrc: SITE.micrograph.src,
 });
 for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
 $('.page-intro').append(...SITE.intro.map((text) => Object.assign(document.createElement('p'), { textContent: text })));
@@ -43,8 +33,7 @@ let layerCount = 1;
 let active = 0;         // the selected layer: where new filters go
 let running = false;
 let changed = false;    // filters moved between layers since the last run
-let showName = false;   // during a run: show the input even if layers applied
-let input = 'name';     // what the network runs on: 'name' or 'micro'
+let showName = false;   // during a run: show the name even if layers applied
 const applied = (id) => stack.filter((l) => l.id === id && l.applied).length;
 const convs = () => stack.filter((l) => !LAYERS[l.id].output).sort((a, b) => a.layer - b.layer);
 const outputs = () => stack.filter((l) => LAYERS[l.id].output);
@@ -124,15 +113,28 @@ function roomyLayer() {
 // A forward pass of the whole network over the name: feature maps layer by
 // layer, pooling, a dense + softmax head, then the page.
 function run() {
-  if (input === 'micro') return runOnMicrograph();
   enqueue(async () => {
     if (!stack.some((l) => !l.applied) && !changed) return;
     running = true;
     const animate = !reducedMotion();
-    await showInput(animate);
 
-    // Filters grouped by layer; one output class per kernel type.
-    const net = buildNet();
+    // The input is always the name: on a re-run, collapse the page back to it.
+    showName = true;
+    window.scrollTo({ top: 0 });
+    if (animate && stack.some((l) => l.applied)) {
+      crossfade();
+      await sleep(300);
+    } else {
+      update();
+    }
+
+    // Filters grouped by layer (empty layers skipped); one output class per
+    // kernel type.
+    const net = [];
+    for (let i = 0; i < layerCount; i++) {
+      const filters = convs().filter((l) => l.layer === i);
+      if (filters.length) net.push(filters.map((l) => ({ id: l.id, from: network.plateRect(l.key) })));
+    }
     const classes = [...new Set(convs().map((l) => l.id))]
       .map((id) => ({ id, section: sectionFor(id).id, title: sectionFor(id).title, short: sectionFor(id).short }));
 
@@ -161,57 +163,6 @@ function run() {
     const titles = ranking.map((id) => sections.sections.find((s) => s.id === id).title);
     announce(`Network ran. Sections in order of score: ${titles.join(', ') || 'none'}.`);
   });
-}
-
-// The micrograph run: the same layers on a real microscopy image, ending on
-// the feature-map diagram (no scoring, no page). The content is unchanged.
-function runOnMicrograph() {
-  enqueue(async () => {
-    if (!convs().length) return;
-    running = true;
-    const animate = !reducedMotion();
-    const pageWasShowing = stack.some((l) => l.applied);
-    await showInput(animate);
-    announce('Running your network on the micrograph. Press Back to return.');
-    await forwardPass({ canvas: microCanvas, area: mapArea(), net: buildNet(), fly: tiles.fly, instant: !animate, mapsOnly: true });
-    running = false;
-    showName = false;
-    if (pageWasShowing && animate) crossfade();
-    else update();
-    announce(pageWasShowing ? 'Back to the page.' : 'Back to the input.');
-  });
-}
-
-// Show the network's input (collapsing the page if it is up) before a run.
-async function showInput(animate) {
-  showName = true;
-  window.scrollTo({ top: 0 });
-  if (animate && stack.some((l) => l.applied)) {
-    crossfade();
-    await sleep(300);
-  } else {
-    update();
-  }
-}
-
-// The conv filters grouped by layer (empty layers skipped), with the rect
-// each tile flies from.
-function buildNet() {
-  const net = [];
-  for (let i = 0; i < layerCount; i++) {
-    const filters = convs().filter((l) => l.layer === i);
-    if (filters.length) net.push(filters.map((l) => ({ id: l.id, from: network.plateRect(l.key) })));
-  }
-  return net;
-}
-
-function toggleInput() {
-  if (running) return;
-  input = input === 'name' ? 'micro' : 'name';
-  update();
-  announce(input === 'micro'
-    ? 'Input switched to a micrograph. Run shows your network\'s feature maps on it.'
-    : 'Input switched back to the name.');
 }
 
 // The page opens out of the score panel: a clip that starts at the panel's
@@ -295,14 +246,12 @@ function update() {
   document.body.classList.toggle('page-mode', pageMode);
   nameView.hidden = pageMode;
   pageView.hidden = !pageMode;
-  inputName.hidden = input === 'micro';
-  inputMicro.hidden = input !== 'micro';
 
   const counts = {};
   for (const l of stack) counts[l.id] = (counts[l.id] || 0) + 1;
   tiles.setCounts(counts, maxCopies);
   sections.setDepths(Object.fromEntries(sections.sections.map((s) => [s.id, applied(s.layer)])));
-  network.render({ filters: convs(), outputs: outputs(), layerCount, active, running, changed, input });
+  network.render({ filters: convs(), outputs: outputs(), layerCount, active, running, changed });
   const labels = ordered().filter((l) => l.applied).map((l) => LAYERS[l.id].label);
   canvas.setAttribute('aria-label', labels.length ? `${SITE.name}, processed by: ${labels.join(', ')}` : SITE.name);
 }

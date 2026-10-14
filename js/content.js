@@ -18,13 +18,6 @@ export const SITE = {
     "Now I work where the two meet: computer vision and machine learning for biological and medical images. I've stayed close to bio because I want what I build to do some good. Next, I'm taking these skills into real-world work through industry, and maybe a PhD after that.",
     "Off the clock: basketball, the NBA and NFL, and the occasional video game.",
   ],
-  // The alternative network input: a public-domain micrograph.
-  micrograph: {
-    src: 'assets/micrograph-cdc-25235.jpg',
-    alt: 'Phase-contrast micrograph of a Clostridium botulinum microcolony',
-    credit: 'Micrograph: CDC/Dr. Lillian V. Holdeman, PHIL #25235 (public domain)',
-    href: 'https://wwwn.cdc.gov/phil/Details.aspx?pid=25235',
-  },
 };
 
 export const SECTIONS = [

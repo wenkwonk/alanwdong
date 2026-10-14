@@ -96,22 +96,6 @@ body.page-mode .stage {
   width: 100%;
 }
 
-/* The micrograph input (toggled in the network panel). */
-.input-micro {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-#micro-canvas { display: block; border-radius: 6px; }
-.micro-credit {
-  margin-top: 10px;
-  font: 11px/1.4 var(--mono);
-  color: var(--muted);
-}
-.micro-credit a { color: inherit; text-underline-offset: 3px; }
-.micro-credit a:hover { color: var(--ink); }
-
 .subtitle {
   margin: 0;
   color: var(--muted);
@@ -580,43 +564,6 @@ a.item-meta { color: var(--ink); text-underline-offset: 3px; }
 }
 .net-input .net-label { color: var(--muted); }
 
-/* The network's input: click to switch between the name and a micrograph. */
-.net-input-toggle {
-  justify-self: start;
-  padding: 3px 6px;
-  margin-left: -6px;
-  font: 11px/1 var(--mono);
-  color: var(--muted);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.net-input-toggle:hover:not(:disabled) { color: var(--ink); border-color: var(--line); }
-.net-input-swap { opacity: 0.7; }
-.net-input { grid-template-columns: 54px 1fr; }
-.plate-input.is-micro {
-  background-image: var(--micro);
-  background-size: cover;
-  background-position: center;
-  filter: grayscale(1);
-}
-
-.fp-back {
-  position: fixed;
-  z-index: 21;
-  transform: translate(-50%, -100%);
-  height: 36px;
-  padding: 0 16px;
-  font: 12px/1 var(--mono);
-  color: var(--bg);
-  background: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
 .net-remove {
   width: 22px;
   height: 22px;
@@ -701,8 +648,6 @@ a.item-meta { color: var(--ink); text-underline-offset: 3px; }
 /* ---------- Focus ---------- */
 
 .tile:focus-visible,
-.net-input-toggle:focus-visible,
-.fp-back:focus-visible,
 .net-remove:focus-visible,
 .net-layer-head:focus-visible,
 .net-add:focus-visible,
@@ -781,18 +726,7 @@ a.item-meta:focus-visible {
     border-top: 1px solid var(--line);
     outline-offset: -3px;
   }
-  .net-title { display: none; }
-  .net-row.net-input {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: auto;
-    min-width: 76px;
-    gap: 4px;
-  }
-  .net-row.net-input .plate { display: block; width: 32px; height: 20px; transform: none; border-radius: 3px; }
-  .net-input-toggle { margin: 0; padding: 2px 4px; font-size: 10px; }
+  .net-title, .net-input { display: none; }
   .net-flow {
     grid-row: 1 / 3;
     grid-column: 1;
