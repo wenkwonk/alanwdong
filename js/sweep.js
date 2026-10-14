@@ -44,7 +44,15 @@ export function drawSweep(ctx, input, output, layer, p, k, colors) {
     ctx.textBaseline = 'middle';
     ctx.font = `${Math.min(13 * k, cell * 0.45)}px ui-monospace, Menlo, monospace`;
     layer.kernel.forEach((v, i) => {
-      ctx.fillText(String(v), x + (i % 3 + 0.5) * cell, y + (Math.floor(i / 3) + 0.5) * cell);
+      // Centre the digit; hang a minus sign to its left (as on the tiles).
+      const cx = x + (i % 3 + 0.5) * cell, cy = y + (Math.floor(i / 3) + 0.5) * cell;
+      const digits = String(Math.abs(v));
+      ctx.textAlign = 'center';
+      ctx.fillText(digits, cx, cy);
+      if (v < 0) {
+        ctx.textAlign = 'right';
+        ctx.fillText('−', cx - ctx.measureText(digits).width / 2, cy);
+      }
     });
   }
 }

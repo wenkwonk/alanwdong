@@ -62,9 +62,20 @@ function tileFace(layer) {
   if (layer.kernel) {
     grid.className = 'tile-kernel';
     for (const v of layer.kernel) {
-      const c = document.createElement('span');
-      c.textContent = v;
-      grid.append(c);
+      // The digit is centred in its cell; a minus sign hangs to its left
+      // without taking up space, so digits align whatever their sign.
+      const cell = document.createElement('span');
+      const num = document.createElement('span');
+      num.className = 'k-num';
+      num.textContent = Math.abs(v);
+      if (v < 0) {
+        const sign = document.createElement('span');
+        sign.className = 'k-sign';
+        sign.textContent = '−';
+        num.prepend(sign);
+      }
+      cell.append(num);
+      grid.append(cell);
     }
   } else {
     grid.className = 'tile-kernel tile-formula';
