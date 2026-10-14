@@ -1,0 +1,98 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/inter-latin-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #fafaf9;
+  --ink: #141414;
+  --muted: #6b6b6b;
+  --line: #e2e2df;
+  --shadow: #9a9a96;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e0f;
+    --ink: #f1f1ef;
+    --muted: #8e8e8a;
+    --line: #2a2a2c;
+    --shadow: #000000;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.hero {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.stage {
+  width: min(100%, 960px);
+}
+
+#name-canvas {
+  display: block;
+  width: 100%;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+}
+
+.tiles {
+  position: fixed;
+  left: 24px;
+  bottom: 24px;
+  display: flex;
+  gap: 8px;
+}
+
+.tile {
+  font: 13px/1 var(--mono);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.tile:hover { border-color: var(--muted); }
+
+.tile:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
