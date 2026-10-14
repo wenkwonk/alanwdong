@@ -21,8 +21,7 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, 
       <div class="net-output"></div>
     </div>
     <button type="button" class="net-run"></button>
-    <button type="button" class="net-reset">Reset</button>
-    <p class="net-note" data-text="networkNote"></p>`;
+    <button type="button" class="net-reset">Reset</button>`;
   const groups = root.querySelector('.net-layers');
   const output = root.querySelector('.net-output');
   const addBtn = root.querySelector('.net-add');

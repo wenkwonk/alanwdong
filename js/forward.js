@@ -329,6 +329,7 @@ function headPanel(last, head, softmax, colors) {
     bar.className = 'fp-bar';
     const fill = document.createElement('i');
     fill.style.width = `${(100 * Math.abs(h.p ?? h.z)) / (h.p != null ? 1 : max)}%`;
+    fill.style.transform = 'scaleX(0)';   // starts empty; grows in after the dense wiring
     bar.append(fill);
     const val = document.createElement('span');
     val.textContent = (h.p ?? h.z).toFixed(h.p != null ? 3 : 2);

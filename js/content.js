@@ -11,10 +11,7 @@
 
 export const SITE = {
   name: 'Alan Dong',
-  subtitle: 'ML for biological images.',
-  hintDrag: 'Drag layers into your network, then press Run.',
-  hintTap: 'Tap layers to add them, then press Run.',
-  networkNote: 'Hand-set 3×3 kernels · real convolution, ReLU, max-pooling and softmax · not a trained model.',
+  subtitle: 'AI/ML for Bio',
 };
 
 export const SECTIONS = [
@@ -93,7 +90,7 @@ export const SECTIONS = [
     items: [
       {
         title: 'Carnegie Mellon University',
-        meta: 'B.S. Statistics & Machine Learning, Minor in Computer Science · GPA 3.76/4.0 · May 2029',
+        meta: 'B.S. Statistics & Machine Learning, Minor in Computer Science',
         summary: 'Relevant coursework in functional programming, data structures, proofs, linear algebra, probability, and statistics.',
         details: [
           '15-150: Functional Programming (SML)',
