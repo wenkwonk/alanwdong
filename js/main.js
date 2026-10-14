@@ -3,6 +3,7 @@ import { LAYERS } from './layers.js';
 import { createStage } from './stage.js';
 import { createTiles } from './tiles.js';
 import { createSections } from './sections.js';
+import { createNetwork } from './network.js';
 import { rasterize } from './raster.js';
 import { paint, theme } from './paint.js';
 import { sweep } from './sweep.js';
@@ -12,52 +13,71 @@ const stageEl = $('#stage');
 const canvas = $('#name-canvas');
 const nameView = $('.name-view');
 const pageView = $('.page-view');
-const chipList = $('#chips');
-const resetBtn = $('#reset');
+const networkEl = $('#network');
 const status = $('#status');
-const nav = $('.bottom-nav');
-const palette = $('.palette');
-const hintDrag = $('.hint-drag');
 
 for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
 
 createStage(canvas, SITE.name);
-const tiles = createTiles($('#tiles'), LAYERS, stageEl, applyLayer);
-const sections = createSections($('#sections'), LAYERS, applyLayer);
+const tiles = createTiles($('#tiles'), LAYERS, [networkEl, stageEl], addLayer);
+const sections = createSections($('#sections'), LAYERS, (id) => { addLayer(id); run(); });
+const network = createNetwork(networkEl, LAYERS, { onRun: run, onRemove: removeLayer, onReset: reset });
 const sectionFor = Object.fromEntries(sections.sections.map((s) => [s.layer, s]));
 
-// The whole UI state: applied layers in order. `key` tells repeats apart.
-// No layers: the page shows the name. Otherwise it shows a section for every
-// layer used, at a depth equal to how many times that layer was applied.
+// The whole UI state: the layers in your network, in the order added.
+// `applied` marks the ones that have run. With nothing applied the stage
+// shows the name; otherwise it shows a section for every layer that has run,
+// at a depth equal to how many times it has run.
 let stack = [];
 let nextKey = 0;
-const count = (id) => stack.filter((l) => l.id === id).length;
+let running = null;   // key of the layer being applied right now
+const applied = (id) => stack.filter((l) => l.id === id && l.applied).length;
+const inNetwork = (id) => stack.filter((l) => l.id === id).length;
+// Run order: conv layers as added, output layers (softmax) last.
+const ordered = () => [...stack.filter((l) => !LAYERS[l.id].output), ...stack.filter((l) => LAYERS[l.id].output)];
 
-// Transitions run one at a time; drops made meanwhile wait their turn.
+// Animations run one at a time; anything requested meanwhile waits its turn.
 let queue = Promise.resolve();
 const enqueue = (fn) => (queue = queue.then(fn, fn));
 
-function applyLayer(id) {
-  enqueue(() => convolveInto(id, () => stack.push({ id, key: nextKey++ })));
+function addLayer(id) {
+  stack.push({ id, key: nextKey++, applied: false });
+  update();
+  announce(`Added ${LAYERS[id].label} to your network. Press Run to apply it.`);
 }
 
-// Bottom nav: open a section at full depth with one convolution.
+// Apply every pending layer in order: the tile flies from its plate onto the
+// stage, then the kernel sweeps across and reveals the new page.
+function run() {
+  enqueue(async () => {
+    for (let next; (next = ordered().find((l) => !l.applied));) {
+      running = next.key;
+      update();
+      if (!reducedMotion()) await tiles.fly(next.id, network.plateRect(next.key), center(visibleRect(stageEl)));
+      await convolveInto(next);
+    }
+    running = null;
+    update();
+  });
+}
+
+// Bottom nav: add whatever that section needs for full depth, and run.
 function openFully(sectionId) {
   const sec = sections.sections.find((s) => s.id === sectionId);
-  enqueue(async () => {
-    const max = sections.maxDepth(sectionId);
-    if (count(sec.layer) >= max) return scrollToSection(sectionId, 'start');
-    await convolveInto(sec.layer, () => {
-      while (count(sec.layer) < max) stack.push({ id: sec.layer, key: nextKey++ });
-    }, 'start');
-  });
+  const max = sections.maxDepth(sectionId);
+  if (applied(sec.layer) >= max) return enqueue(() => scrollToSection(sectionId, 'start'));
+  while (inNetwork(sec.layer) < max) stack.push({ id: sec.layer, key: nextKey++, applied: false });
+  update();
+  run();
 }
 
 function removeLayer(key) {
   enqueue(() => {
-    const removed = stack.splice(stack.findIndex((l) => l.key === key), 1)[0];
-    crossfade();
+    const [removed] = stack.splice(stack.findIndex((l) => l.key === key), 1);
+    if (removed.applied) crossfade();
+    else update();
     announce(`Removed ${LAYERS[removed.id].label}.`);
+    network.focusRun();
   });
 }
 
@@ -66,21 +86,22 @@ function reset() {
     stack = [];
     crossfade();
     window.scrollTo({ top: 0 });
-    announce('All layers cleared.');
+    announce('Network cleared.');
+    document.querySelector('.tile').focus();
   });
 }
 
-// Rasterize what is on screen (the name, or the page), convolve it with the
-// layer's kernel, play the sweep, swap in the new page underneath, dissolve.
-async function convolveInto(id, mutate, block = 'nearest') {
-  const layer = LAYERS[id];
-  const pageMode = stack.length > 0;
+// Rasterize what is on screen (the name, or the page) and convolve it with
+// the layer's kernel. Then build the new page underneath, hidden behind a
+// clip that opens up wherever the sweeping kernel has passed.
+async function convolveInto(entry) {
+  const layer = LAYERS[entry.id];
+  const pageMode = stack.some((l) => l.applied);
 
   if (reducedMotion()) {
-    mutate();
+    entry.applied = true;
     update();
   } else {
-    // Picture of what is on screen now, and its convolution.
     const before = visibleRect(stageEl);
     let scale = Math.min(window.devicePixelRatio || 1, 2);
     scale = Math.min(scale, Math.sqrt(2.5e6 / (before.width * before.height))); // cap work
@@ -88,13 +109,11 @@ async function convolveInto(id, mutate, block = 'nearest') {
     const out = layer.run(src.buf, src.w, src.h, scale * (pageMode ? 0.8 : 2), src.buf);
     const colors = theme();
 
-    // Build the new page now, hidden behind a clip that the sweep opens up.
     document.documentElement.classList.add('locked');
     stageEl.style.clipPath = 'inset(0 0 100% 0)';
-    mutate();
+    entry.applied = true;
     update();
-    const after = visibleRect(stageEl);
-    const r = union(before, after);
+    const r = union(before, visibleRect(stageEl));
     const s = stageEl.getBoundingClientRect();
 
     await sweep(r, before, paint(src.buf, src.w, src.h, colors), paint(out, src.w, src.h, colors), layer,
@@ -109,49 +128,61 @@ async function convolveInto(id, mutate, block = 'nearest') {
     document.documentElement.classList.remove('locked');
   }
 
-  const sec = sectionFor[id];
-  announce(`Applied ${layer.label}. ${sec.title}, depth ${Math.min(count(id), sections.maxDepth(sec.id))}.`);
-  scrollToSection(sec.id, block);
+  const sec = sectionFor[entry.id];
+  announce(`Applied ${layer.label}. ${sec.title}, depth ${Math.min(applied(entry.id), sections.maxDepth(sec.id))}.`);
+  await scrollToSection(sec.id, 'nearest');
 }
 
-// Non-convolution changes (removing a chip, Reset) just fade.
+// Non-convolution changes (removing a layer that ran, Reset) just fade.
 function crossfade() {
   update();
   if (!reducedMotion()) stageEl.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
 }
 
 function update() {
-  const pageMode = stack.length > 0;
+  const pageMode = stack.some((l) => l.applied);
   document.body.classList.toggle('page-mode', pageMode);
   nameView.hidden = pageMode;
   pageView.hidden = !pageMode;
-  hintDrag.textContent = pageMode ? SITE.hintDragPage : SITE.hintDrag;
 
-  // Chips list output stages (softmax) last, matching the network.
-  const ordered = [...stack.filter((l) => !LAYERS[l.id].output), ...stack.filter((l) => LAYERS[l.id].output)];
   const counts = {};
   for (const l of stack) counts[l.id] = (counts[l.id] || 0) + 1;
   tiles.setCounts(counts);
-  sections.setDepths(Object.fromEntries(sections.sections.map((s) => [s.id, counts[s.layer] || 0])));
-  renderChips(ordered);
-  const labels = ordered.map((l) => LAYERS[l.id].label);
+  sections.setDepths(Object.fromEntries(sections.sections.map((s) => [s.id, applied(s.layer)])));
+  network.render(ordered(), running);
+  const labels = ordered().filter((l) => l.applied).map((l) => LAYERS[l.id].label);
   canvas.setAttribute('aria-label', labels.length ? `${SITE.name}, processed by: ${labels.join(', ')}` : SITE.name);
 }
 
-// The on-screen part of `el`, excluding fixed bars along the bottom.
+// The on-screen part of `el`, excluding fixed bars along the bottom
+// (the nav, and on narrow screens the tile tray and network strip).
 function visibleRect(el) {
   const b = el.getBoundingClientRect();
-  let bottom = Math.min(window.innerHeight, nav.getBoundingClientRect().top);
-  if (getComputedStyle(palette).position === 'fixed' && palette.getBoundingClientRect().top > window.innerHeight / 2) {
-    bottom = Math.min(bottom, palette.getBoundingClientRect().top);
+  let bottom = window.innerHeight;
+  for (const bar of document.querySelectorAll('.bottom-nav, .palette, .network')) {
+    const t = bar.getBoundingClientRect().top;
+    if (getComputedStyle(bar).position === 'fixed' && t > window.innerHeight / 2) bottom = Math.min(bottom, t);
   }
   const top = Math.max(0, b.top);
   return new DOMRect(b.left, top, b.width, Math.max(1, Math.min(bottom, b.bottom) - top));
 }
 
+const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+
+// Scroll a section into view; resolves once the scroll has settled.
 function scrollToSection(id, block) {
-  if (!stack.length) return;
-  sections.element(id).scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block });
+  if (!stack.some((l) => l.applied)) return;
+  const el = sections.element(id);
+  const r = el.getBoundingClientRect();
+  if (block === 'nearest' && r.top >= 0 && r.bottom <= visibleRect(document.body).bottom) return;
+  const smooth = !reducedMotion();
+  el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block });
+  if (!smooth) return;
+  return new Promise((resolve) => {
+    const done = () => { clearTimeout(t); window.removeEventListener('scrollend', done); resolve(); };
+    const t = setTimeout(done, 700);
+    window.addEventListener('scrollend', done);
+  });
 }
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -159,31 +190,6 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 function union(a, b) {
   const left = Math.min(a.left, b.left), top = Math.min(a.top, b.top);
   return new DOMRect(left, top, Math.max(a.right, b.right) - left, Math.max(a.bottom, b.bottom) - top);
-}
-
-function renderChips(ordered) {
-  chipList.replaceChildren(...ordered.map(({ id, key }) => {
-    const li = document.createElement('li');
-    li.className = 'chip';
-    const name = document.createElement('span');
-    name.textContent = LAYERS[id].label;
-    const x = document.createElement('button');
-    x.type = 'button';
-    x.className = 'chip-remove';
-    x.textContent = '×';
-    x.setAttribute('aria-label', `Remove ${LAYERS[id].label}`);
-    x.addEventListener('click', () => {
-      // Keep keyboard focus nearby after the chip disappears.
-      const idx = [...chipList.children].indexOf(li);
-      removeLayer(key);
-      enqueue(() => {
-        const rest = chipList.querySelectorAll('.chip-remove');
-        (rest[Math.min(idx, rest.length - 1)] || document.querySelector('.tile')).focus();
-      });
-    });
-    li.append(name, x);
-    return li;
-  }));
 }
 
 function announce(msg) {
@@ -197,5 +203,4 @@ for (const link of document.querySelectorAll('[data-open]')) {
   });
 }
 
-resetBtn.addEventListener('click', reset);
 update();

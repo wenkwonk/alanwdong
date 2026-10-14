@@ -1,9 +1,10 @@
 const DRAG_THRESHOLD = 6; // px of movement before a press becomes a drag
 
 // Builds a <button> per layer in `container`. Every way of choosing a tile
-// (click, tap, Enter/Space, or dragging it onto `target`) calls apply(id).
-// Dragging uses Pointer Events so it works the same for mouse, pen and touch.
-export function createTiles(container, layers, target, apply) {
+// (click, tap, Enter/Space, or dragging it onto one of `targets`) calls
+// choose(id). Dragging uses Pointer Events so it works the same for mouse,
+// pen and touch.
+export function createTiles(container, layers, targets, choose) {
   const buttons = {};
 
   for (const [id, layer] of Object.entries(layers)) {
@@ -12,21 +13,42 @@ export function createTiles(container, layers, target, apply) {
     btn.className = 'tile';
     btn.dataset.id = id;
     btn.append(tileFace(layer));
-    enableDrag(btn, target, () => apply(id));
+    enableDrag(btn, targets, () => choose(id));
     container.append(btn);
     buttons[id] = btn;
   }
 
   return {
-    // Show how many times each tile is in the stack.
+    // Show how many times each tile is in the network.
     setCounts(counts) {
       for (const [id, btn] of Object.entries(buttons)) {
         const n = counts[id] || 0;
         btn.classList.toggle('is-applied', n > 0);
         btn.querySelector('.tile-count').textContent = n > 1 ? `×${n}` : '';
         const label = layers[id].label;
-        btn.setAttribute('aria-label', n ? `${label}, applied ${n} time${n > 1 ? 's' : ''}` : label);
+        btn.setAttribute('aria-label', n ? `${label}, in your network ${n} time${n > 1 ? 's' : ''}` : label);
       }
+    },
+
+    // The automatic drag: a copy of the tile flies from `from` (a rect) to
+    // the point `to`, as if someone dragged it there. Resolves on landing.
+    fly(id, from, to) {
+      const g = buttons[id].cloneNode(true);
+      g.classList.add('tile-ghost');
+      g.setAttribute('aria-hidden', 'true');
+      document.body.append(g);
+      const w = g.offsetWidth, h = g.offsetHeight;
+      const x0 = from.left + from.width / 2 - w / 2, y0 = from.top + from.height / 2 - h / 2;
+      const x1 = to.x - w / 2, y1 = to.y - h / 2;
+      const lift = Math.min(120, Math.hypot(x1 - x0, y1 - y0) / 4);   // arc upward
+      const a = g.animate([
+        { transform: `translate(${x0}px, ${y0}px) scale(1)` },
+        { transform: `translate(${(x0 + x1) / 2}px, ${(y0 + y1) / 2 - lift}px) scale(1.06)`, offset: 0.5 },
+        { transform: `translate(${x1}px, ${y1}px) scale(1)` },
+      ], { duration: 700, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' });
+      return a.finished.then(() => {
+        g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).onfinish = () => g.remove();
+      });
     },
   };
 }
@@ -76,7 +98,7 @@ function tileFace(layer) {
   return face;
 }
 
-function enableDrag(btn, target, onApply) {
+function enableDrag(btn, targets, onDrop) {
   let start = null;      // pointerdown position, while the button is pressed
   let ghost = null;      // floating copy that follows the pointer
   let offset = null;     // pointer position inside the tile
@@ -84,7 +106,7 @@ function enableDrag(btn, target, onApply) {
 
   btn.addEventListener('click', () => {
     if (suppressClick) suppressClick = false;
-    else onApply();
+    else onDrop();
   });
 
   btn.addEventListener('pointerdown', (e) => {
@@ -107,10 +129,10 @@ function enableDrag(btn, target, onApply) {
       ghost.style.width = r.width + 'px';
       document.body.append(ghost);
       btn.classList.add('is-dragging');
-      target.classList.add('drop-armed');
+      for (const t of targets) t.classList.add('drop-armed');
     }
     ghost.style.transform = `translate(${e.clientX - offset.x}px, ${e.clientY - offset.y}px)`;
-    target.classList.toggle('drop-ready', isOver(target, e));
+    for (const t of targets) t.classList.toggle('drop-ready', isOver(t, e));
   });
 
   const finish = (e, cancelled) => {
@@ -118,13 +140,13 @@ function enableDrag(btn, target, onApply) {
     start = null;
     if (!ghost) return;
     suppressClick = true; // the click that follows a drag is not a tap
-    const hit = !cancelled && isOver(target, e);
-    target.classList.remove('drop-armed', 'drop-ready');
+    const hit = !cancelled && targets.some((t) => isOver(t, e));
+    for (const t of targets) t.classList.remove('drop-armed', 'drop-ready');
     btn.classList.remove('is-dragging');
     const g = ghost;
     ghost = null;
     if (hit) {
-      onApply();
+      onDrop();
       fadeOut(g);
     } else {
       flyBack(g, btn);

@@ -11,9 +11,8 @@
 export const SITE = {
   name: 'Alan Dong',
   subtitle: 'ML for biological images.',
-  hintDrag: 'Drag a layer onto my name.',
-  hintDragPage: 'Drag another layer onto the page.',
-  hintTap: 'Tap a layer to apply it.',
+  hintDrag: 'Drag layers into your network, then press Run.',
+  hintTap: 'Tap layers to add them, then press Run.',
 };
 
 export const SECTIONS = [
