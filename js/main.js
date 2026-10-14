@@ -128,7 +128,7 @@ function run() {
       if (filters.length) net.push(filters.map((l) => ({ id: l.id, from: network.plateRect(l.key) })));
     }
     const classes = [...new Set(convs().map((l) => l.id))]
-      .map((id) => ({ id, section: sectionFor(id).id, title: sectionFor(id).title }));
+      .map((id) => ({ id, section: sectionFor(id).id, title: sectionFor(id).title, short: sectionFor(id).short }));
 
     let ranking = [];
     await forwardPass({
@@ -139,14 +139,14 @@ function run() {
       softmax: stack.some((l) => LAYERS[l.id].output),
       fly: tiles.fly,
       instant: !animate,
-      generate: (point, instant, rank) => {
+      generate: (rect, instant, rank) => {
         ranking = rank;
         sections.setOrder(rank);
         for (const l of stack) l.applied = true;
         showName = false;
         changed = false;
         update();
-        if (!instant) return growFrom(point);
+        if (!instant) return openFrom(rect);
       },
     });
 
@@ -157,13 +157,17 @@ function run() {
   });
 }
 
-// The page grows out of the merged feature map as an expanding circle.
-function growFrom(point) {
+// The page opens out of the score panel: a clip that starts at the panel's
+// rectangle and expands to the whole page.
+function openFrom(rect) {
+  if (!rect) return;
   const s = stageEl.getBoundingClientRect();
-  const x = point.x - s.left, y = point.y - s.top;
-  const r = Math.hypot(Math.max(x, s.width - x), Math.max(y, window.innerHeight - s.top));
-  const a = stageEl.animate([{ clipPath: `circle(0px at ${x}px ${y}px)` }, { clipPath: `circle(${r}px at ${x}px ${y}px)` }],
-    { duration: 700, easing: 'cubic-bezier(.4,0,.2,1)' });
+  const t = Math.max(0, rect.top - s.top), l = Math.max(0, rect.left - s.left);
+  const r = Math.max(0, s.right - rect.right), b = Math.max(0, s.bottom - rect.bottom);
+  const a = stageEl.animate([
+    { clipPath: `inset(${t}px ${r}px ${b}px ${l}px round 10px)`, opacity: 0.4 },
+    { clipPath: 'inset(0px 0px 0px 0px round 0px)', opacity: 1 },
+  ], { duration: 650, easing: 'cubic-bezier(.4,0,.2,1)' });
   return a.finished.catch(() => {});
 }
 
@@ -295,6 +299,7 @@ function announce(msg) {
 }
 
 for (const link of document.querySelectorAll('[data-open]')) {
+  link.textContent = sections.sections.find((s) => s.id === link.dataset.open).short;
   link.addEventListener('click', (e) => {
     e.preventDefault();
     openFully(link.dataset.open);

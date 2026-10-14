@@ -24,11 +24,12 @@ const SVG = 'http://www.w3.org/2000/svg';
 //   area       viewport rect to lay the feature maps out in
 //   net        [[{ id, from }, …], …] filters per layer, in order
 //              (from: rect the tile flies from)
-//   classes    [{ id, section, title }] one per kernel type
+//   classes    [{ id, section, title, short }] one per kernel type
 //   softmax    whether the network ends in a softmax output layer
 //   fly        (id, fromRect, toPoint, ms) => Promise, the automatic drag
-//   generate   (point, instant, ranking) => Promise, shows the page growing
-//              from point; ranking is section ids, highest score first
+//   generate   (rect, instant, ranking) => Promise, shows the page opening
+//              out of rect (the score panel, or null); ranking is section
+//              ids, highest score first
 //   instant    skip all animation (still computes everything)
 //
 // Any click or keypress skips to the end.
@@ -79,12 +80,12 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
     root.setAttribute('aria-hidden', 'true');
     document.body.append(root);
     canvas.parentElement.style.visibility = 'hidden';
-    const merge = center(area);
     const cards = [];
+    let panel = null;   // the head, once shown
 
     if (maps.length && !ctl.skipped) {
       const ar = src.w / src.h;
-      const grid = layout([1, ...columns.map((c) => c.maps.length)], area, ar);
+      const { slots: grid, head: lane } = layout([1, ...columns.map((c) => c.maps.length)], area, ar, head.length > 0);
       const svg = document.createElementNS(SVG, 'svg');
       svg.setAttribute('class', 'fp-links');
       svg.setAttribute('width', area.width);
@@ -147,16 +148,12 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
       // The head reads only the last layer: everything before it dims.
       const lastCards = last.map((m) => m.card);
       for (const c of cards) {
-        if (!lastCards.includes(c)) ctl.animate(c.fig, [{ opacity: 1 }, { opacity: 0.15 }], { duration: 300 });
+        if (!lastCards.includes(c)) ctl.animate(c.fig, [{ opacity: 1 }, { opacity: 0.2 }], { duration: 400 });
       }
-      ctl.animate(svg, [{ opacity: 1 }, { opacity: 0.15 }], { duration: 300 });
+      ctl.animate(svg, [{ opacity: 1 }, { opacity: 0.25 }], { duration: 400 });
 
       // Max-pool the last layer's maps in place, a level at a time.
-      for (const m of last) {
-        m.card.ctx.imageSmoothingEnabled = false;
-        m.card.fig.style.transformOrigin = '50% 50%';
-        ctl.animate(m.card.fig, [{ transform: 'none' }, { transform: 'scale(0.85)' }], { duration: 700, easing: 'ease-in-out' });
-      }
+      for (const m of last) m.card.ctx.imageSmoothingEnabled = false;
       const steps = Math.max(...last.map((m) => m.levels.length));
       for (let i = 0; i < steps && !ctl.skipped; i++) {
         for (const m of last) {
@@ -167,34 +164,67 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
         await ctl.wait(700 / steps);
       }
 
-      // Flatten: the pooled maps fly into the head's feature vector, which
-      // fills in with their actual values; then dense → softmax.
       if (head.length && !ctl.skipped) {
-        const panel = headPanel(last, head, softmax, colors);
-        Object.assign(panel.style, { left: merge.x - area.left + 'px', top: merge.y - area.top + 'px', opacity: 0 });
+        // The head is the next column: it fades in where the diagram
+        // continues, wired to the last layer.
+        panel = headPanel(last, head, softmax, colors);
         root.append(panel);
-        const strip = center(panel.querySelector('.fp-flat').getBoundingClientRect());
-        await Promise.all(last.map((m) => {
-          const c = center(m.card.fig.getBoundingClientRect());
+        const pw = Math.min(lane.w, panel.offsetWidth), ph = panel.offsetHeight;
+        Object.assign(panel.style, {
+          left: lane.x + (lane.w - pw) / 2 + 'px',
+          top: lane.y + (lane.h - ph) / 2 + 'px',
+          opacity: 0,
+        });
+        const groups = [...panel.querySelectorAll('.fp-group')];
+        const wires = document.createElementNS(SVG, 'svg');
+        wires.setAttribute('class', 'fp-links');
+        wires.setAttribute('width', area.width);
+        wires.setAttribute('height', area.height);
+        root.insertBefore(wires, root.firstChild);
+        const local = (rc) => ({ x: rc.left - area.left, y: rc.top - area.top, w: rc.width, h: rc.height });
+        const vertical = area.width < 600;
+        last.forEach((m, i) => {
+          const a = local(m.card.cv.getBoundingClientRect()), g = local(groups[i].getBoundingClientRect());
+          const line = vertical
+            ? segment(wires, a.x + a.w / 2, a.y + a.h, g.x + g.w / 2, g.y)
+            : segment(wires, a.x + a.w, a.y + a.h / 2, g.x, g.y + g.h / 2);
+          ctl.animate(line, [{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
+        });
+        ctl.animate(panel, [{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: 'ease-out' });
+
+        // Flatten: each pooled map squeezes into its group of cells, which
+        // light up with its actual values as it arrives.
+        const squeeze = last.map((m, i) => {
+          const c = m.card.cv.getBoundingClientRect(), g = groups[i].getBoundingClientRect();
+          m.card.fig.style.transformOrigin = '0 0';
           return ctl.animate(m.card.fig, [
-            { transform: 'scale(0.85)', opacity: 1 },
-            { transform: `translate(${strip.x - c.x}px, ${strip.y - c.y}px) scale(0.05)`, opacity: 0 },
-          ], { duration: 550, easing: 'cubic-bezier(.6,0,.4,1)' });
-        }));
-        for (const c of cards) ctl.animate(c.fig, [{ opacity: 0.15 }, { opacity: 0 }], { duration: 250 });
-        ctl.animate(svg, [{ opacity: 0.15 }, { opacity: 0 }], { duration: 250 });
-        panel.style.opacity = '';
-        await Promise.all([...panel.querySelectorAll('.fp-flat i')].map((cell, i) =>
-          ctl.animate(cell, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, delay: i * 14, fill: 'both' })));
-        await Promise.all([...panel.querySelectorAll('.fp-bar i')].map((bar) =>
-          ctl.animate(bar, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 500, easing: 'ease-out' })));
-        await ctl.wait(600);
+            { transform: 'none', opacity: 1 },
+            { transform: `translate(${(g.left - c.left) * 0.7}px, ${(g.top - c.top) * 0.7}px) scale(${0.3 + 0.7 * g.width / c.width}, ${0.3 + 0.7 * g.height / c.height})`, opacity: 1, offset: 0.7 },
+            { transform: `translate(${g.left - c.left}px, ${g.top - c.top}px) scale(${g.width / c.width}, ${g.height / c.height})`, opacity: 0 },
+          ], { duration: 650, easing: 'cubic-bezier(.5,0,.3,1)' });
+        });
+        const cellsIn = groups.flatMap((g) => [...g.children].map((cell, j) =>
+          ctl.animate(cell, [{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 380 + j * 35, fill: 'both' })));
+        await Promise.all([...squeeze, ...cellsIn]);
+
+        // Dense: wires from the vector to every class, then the scores.
+        drawDense(panel);
+        await Promise.all([...panel.querySelectorAll('.fp-dense line')].map((l) =>
+          ctl.animate(l, [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 400, easing: 'ease-out' })));
+        await Promise.all([...panel.querySelectorAll('.fp-bar i')].map((bar, i) =>
+          ctl.animate(bar, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 450, delay: i * 70, easing: 'ease-out', fill: 'both' })));
+        const top = panel.querySelector('.fp-row');
+        top.classList.add('is-top');
+        await ctl.animate(top, [{ backgroundColor: 'transparent' }, { backgroundColor: 'var(--hl)' }], { duration: 300 });
+        await ctl.wait(450);
       }
     }
 
-    root.remove();
+    // The page opens out of the score panel while the diagram fades away.
+    const from = panel && !ctl.skipped ? panel.getBoundingClientRect() : null;
     canvas.parentElement.style.visibility = '';
-    await generate(merge, ctl.skipped, head.map((h) => h.section));
+    const fade = from ? root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 650, easing: 'ease-in', fill: 'forwards' }).finished : null;
+    await Promise.all([generate(from, ctl.skipped, head.map((h) => h.section)), fade]);
   } finally {
     root.remove();
     canvas.parentElement.style.visibility = '';
@@ -206,13 +236,32 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
 // top when the layers are stacked vertically).
 function link(svg, a, b, ar, vertical) {
   const ah = a.w / ar, bh = b.w / ar;
-  const [x1, y1, x2, y2] = vertical
-    ? [a.x + a.w / 2, a.y + ah, b.x + b.w / 2, b.y]
-    : [a.x + a.w, a.y + ah / 2, b.x, b.y + bh / 2];
+  return vertical
+    ? segment(svg, a.x + a.w / 2, a.y + ah, b.x + b.w / 2, b.y)
+    : segment(svg, a.x + a.w, a.y + ah / 2, b.x, b.y + bh / 2);
+}
+
+function segment(svg, x1, y1, x2, y2) {
   const line = document.createElementNS(SVG, 'line');
   Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => line.setAttribute(k, v));
   svg.append(line);
   return line;
+}
+
+// The dense layer's wiring inside the score panel: every group of the
+// flattened vector connects to every class. Lines use pathLength=1 so they
+// can be drawn on with stroke-dashoffset.
+function drawDense(panel) {
+  const svg = panel.querySelector('.fp-dense');
+  const box = svg.getBoundingClientRect();
+  for (const g of panel.querySelectorAll('.fp-group')) {
+    const a = g.getBoundingClientRect();
+    for (const bar of panel.querySelectorAll('.fp-row')) {
+      const b = bar.getBoundingClientRect();
+      const line = segment(svg, a.right - box.left, a.top + a.height / 2 - box.top, b.left - box.left, b.top + b.height / 2 - box.top);
+      line.setAttribute('pathLength', 1);
+    }
+  }
 }
 
 // Dense layer + softmax over the last layer's pooled, flattened features.
@@ -228,7 +277,7 @@ function classify(classes, maps, softmax) {
       for (const v of m.features) sum += v;
       n += m.features.length;
     }
-    return { section: c.section, title: c.title, z: DENSE_WEIGHT * sum / Math.max(1, n), p: null };
+    return { section: c.section, title: c.title, short: c.short, z: DENSE_WEIGHT * sum / Math.max(1, n), p: null };
   });
   if (softmax && rows.length) {
     const zmax = Math.max(...rows.map((r) => r.z));
@@ -239,34 +288,43 @@ function classify(classes, maps, softmax) {
   return rows.sort((a, b) => (b.p ?? b.z) - (a.p ?? a.z));
 }
 
-// The head, drawn: a strip of the actual flattened feature values, then a
+// The head, drawn: the flattened vector (a group of cells per last-layer
+// map, showing that map's actual pooled values), the dense wiring, and a
 // bar per class with its probability (or logit).
-function headPanel(maps, head, softmax, colors) {
+function headPanel(last, head, softmax, colors) {
   const panel = document.createElement('div');
   panel.className = 'fp-head';
-
-  const all = maps.flatMap((m) => [...m.features]);
-  const n = Math.min(24, all.length);
-  const strip = document.createElement('div');
-  strip.className = 'fp-flat';
-  for (let i = 0; i < n; i++) {
-    const v = Math.min(1, all[Math.floor((i * all.length) / n)]);
-    const cell = document.createElement('i');
-    cell.style.background = `rgba(${colors.ink}, ${0.08 + 0.92 * v})`;
-    strip.append(cell);
-  }
-
-  const table = document.createElement('div');
-  table.className = 'fp-scores';
   const title = document.createElement('p');
+  title.className = 'fp-title';
   title.textContent = softmax ? 'max-pool → flatten → dense → softmax' : 'max-pool → flatten → dense → logits';
-  table.append(title);
+
+  const body = document.createElement('div');
+  body.className = 'fp-body';
+  const flat = document.createElement('div');
+  flat.className = 'fp-flat';
+  const CELLS = 6;
+  for (const m of last) {
+    const group = document.createElement('div');
+    group.className = 'fp-group';
+    for (let j = 0; j < CELLS; j++) {
+      const v = Math.min(1, m.features[Math.floor(((j + 0.5) * m.features.length) / CELLS)]);
+      const cell = document.createElement('i');
+      cell.style.background = `rgba(${colors.ink}, ${0.08 + 0.92 * v})`;
+      group.append(cell);
+    }
+    flat.append(group);
+  }
+  const dense = document.createElementNS(SVG, 'svg');
+  dense.setAttribute('class', 'fp-dense');
+
+  const scores = document.createElement('div');
+  scores.className = 'fp-scores';
   const max = Math.max(...head.map((h) => Math.abs(h.p ?? h.z)), 1e-6);
   for (const h of head) {
     const row = document.createElement('div');
     row.className = 'fp-row';
     const name = document.createElement('span');
-    name.textContent = h.title;
+    name.textContent = h.short;
     const bar = document.createElement('span');
     bar.className = 'fp-bar';
     const fill = document.createElement('i');
@@ -275,38 +333,39 @@ function headPanel(maps, head, softmax, colors) {
     const val = document.createElement('span');
     val.textContent = (h.p ?? h.z).toFixed(h.p != null ? 3 : 2);
     row.append(name, bar, val);
-    table.append(row);
+    scores.append(row);
   }
-  panel.append(strip, table);
+  body.append(flat, dense, scores);
+  panel.append(title, body);
   return panel;
 }
 
-// Lay out the maps: one column per layer (the input first), each column's
-// maps stacked and centred; on narrow screens columns become rows. `counts`
-// is maps per column. Returns slots[column][i] = { x, y, w } in area coords.
-function layout(counts, area, ar) {
-  const gap = 16, label = 20;
+// Lay out the diagram: one lane per layer (the input first), each lane's
+// maps stacked and centred, then a lane for the head if `withHead`. Lanes
+// are columns, or rows on narrow screens. Returns { slots, head }:
+// slots[lane][i] = { x, y, w } and head = { x, y, w, h }, in area coords.
+const HEAD_W = 236, HEAD_H = 170;
+function layout(counts, area, ar, withHead) {
+  const gap = 16, label = 20, gx = 40;
   const vertical = area.width < 600;
   const lanes = counts.length, most = Math.max(...counts);
-  let w;
+  let w, h, head, place;
   if (vertical) {
-    w = Math.min((area.width - gap * (most - 1)) / most, ((area.height * 0.9 - gap * (lanes - 1)) / lanes - label) * ar);
+    const roomH = area.height * 0.94 - (withHead ? HEAD_H + gap : 0);
+    w = Math.min((area.width - gap * (most - 1)) / most, ((roomH - gap * (lanes - 1)) / lanes - label) * ar);
+    h = w / ar + label;
+    const y0 = (area.height - (lanes * h + (lanes - 1) * gap + (withHead ? gap + HEAD_H : 0))) / 2;
+    place = (c, i, n) => ({ x: (area.width - (n * w + (n - 1) * gap)) / 2 + i * (w + gap), y: y0 + c * (h + gap), w });
+    head = { x: 0, y: y0 + lanes * (h + gap), w: area.width, h: HEAD_H };
   } else {
-    const gx = 40;   // room between columns for the wiring
-    w = Math.min((area.width - gx * (lanes - 1)) / lanes, ((area.height * 0.85 - gap * (most - 1)) / most - label) * ar, 260);
+    const headW = withHead ? HEAD_W + gx : 0;
+    w = Math.min((area.width - headW - gx * (lanes - 1)) / lanes, ((area.height * 0.85 - gap * (most - 1)) / most - label) * ar, 240);
+    h = w / ar + label;
+    const x0 = (area.width - (lanes * w + (lanes - 1) * gx + headW)) / 2;
+    place = (c, i, n) => ({ x: x0 + c * (w + gx), y: (area.height - (n * h + (n - 1) * gap)) / 2 + i * (h + gap), w });
+    head = { x: x0 + lanes * (w + gx), y: 0, w: HEAD_W, h: area.height };
   }
-  const h = w / ar + label;
-  return counts.map((n, c) => Array.from({ length: n }, (_, i) => {
-    if (vertical) {
-      const rowY = (area.height - (lanes * h + (lanes - 1) * gap)) / 2 + c * (h + gap);
-      const x0 = (area.width - (n * w + (n - 1) * gap)) / 2;
-      return { x: x0 + i * (w + gap), y: rowY, w };
-    }
-    const gx = (area.width - lanes * w) / Math.max(1, lanes - 1);
-    const x = lanes === 1 ? (area.width - w) / 2 : c * (w + Math.min(gx, 80)) + (area.width - (lanes * w + (lanes - 1) * Math.min(gx, 80))) / 2;
-    const y0 = (area.height - (n * h + (n - 1) * gap)) / 2;
-    return { x, y: y0 + i * (h + gap), w };
-  }));
+  return { slots: counts.map((n, c) => Array.from({ length: n }, (_, i) => place(c, i, n))), head };
 }
 
 const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });

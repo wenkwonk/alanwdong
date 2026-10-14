@@ -12,6 +12,7 @@
   --muted: #6b6b6b;
   --line: #e2e2df;
   --shadow: #9a9a96;
+  --hl: rgba(20, 20, 20, 0.07);   /* score row highlight */
   --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --nav-h: 48px;
@@ -26,6 +27,7 @@
     --muted: #8e8e8a;
     --line: #2a2a2c;
     --shadow: #000000;
+    --hl: rgba(241, 241, 239, 0.1);
   }
 }
 
@@ -101,7 +103,7 @@ body.page-mode .stage {
   letter-spacing: 0.01em;
 }
 
-/* The forward pass (see forward.js): feature maps, pooling, merge. */
+/* The forward pass (see forward.js): feature maps, pooling, the head. */
 .fp {
   position: fixed;
   z-index: 20;
@@ -136,35 +138,49 @@ body.page-mode .stage {
 
 .fp-head {
   position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 16px 18px;
-  transform: translate(-50%, -50%);
+  padding: 12px 14px 14px;
   background: var(--bg);
   border: 1px solid var(--ink);
   border-radius: 10px;
   font: 12px/1.2 var(--mono);
 }
-.fp-flat {
+.fp-title { margin: 0 0 10px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.fp-body {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(2, 10px);
-  gap: 2px;
+  grid-template-columns: auto 28px auto;
+  align-items: center;
 }
-.fp-flat i { width: 10px; height: 10px; border-radius: 1px; }
-.fp-scores p { margin: 0 0 8px; color: var(--muted); font-size: 11px; }
+.fp-flat { display: flex; flex-direction: column; gap: 6px; }
+.fp-group { display: flex; flex-direction: column; gap: 2px; }
+.fp-group i { display: block; width: 10px; height: 7px; border-radius: 1px; }
+.fp-dense {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.fp-dense line {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 1;
+}
+.fp-scores { grid-column: 3; display: grid; gap: 4px; }
 .fp-row {
   display: grid;
-  grid-template-columns: 19ch 110px 5ch;
+  grid-template-columns: 10ch 56px 5ch;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
   white-space: nowrap;
 }
-.fp-row span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .fp-row span:last-child { text-align: right; }
+.fp-row.is-top { font-weight: 700; }
 .fp-bar {
-  height: 8px;
+  height: 7px;
   background: var(--line);
   border-radius: 2px;
   overflow: hidden;
@@ -175,7 +191,6 @@ body.page-mode .stage {
   background: var(--ink);
   transform-origin: 0 50%;
 }
-
 
 /* ---------- Page view ---------- */
 
@@ -701,7 +716,7 @@ a.item-meta:focus-visible {
   .net-layers { display: flex; gap: 6px; }
   .net-layer { margin: 0; padding: 2px 4px; min-width: 84px; }
   .net-layer-head { padding: 0 0 2px; font-size: 10px; white-space: nowrap; }
-  .net-output .net-label { overflow: visible; }
+  .net-output .net-label { overflow: visible; max-width: none; }
   .net-row {
     grid-template-columns: 1fr auto;
     height: 20px;

@@ -1,6 +1,7 @@
 // All text on the site lives here. Edit freely; no layout code needed.
 //
-// Each section is revealed by one layer tile (see `layer`). Applying the
+// Each section is revealed by one layer tile (see `layer`); `short` is its
+// name in the bottom nav and the network's score panel. Applying the
 // tile again reveals the section in more depth:
 //   depth 1  every item's `title` and `meta`
 //   depth 2  + each item's `summary`
@@ -19,6 +20,7 @@ export const SITE = {
 export const SECTIONS = [
   {
     id: 'projects',
+    short: 'Projects',
     title: 'Projects',
     layer: 'edges',
     items: [
@@ -56,6 +58,7 @@ export const SECTIONS = [
 
   {
     id: 'experience',
+    short: 'Experience',
     title: 'Experience',
     layer: 'sharpen',
     items: [
@@ -84,6 +87,7 @@ export const SECTIONS = [
 
   {
     id: 'skills',
+    short: 'Skills',
     title: 'Skills & coursework',
     layer: 'blur',
     items: [
@@ -125,6 +129,7 @@ export const SECTIONS = [
 
   {
     id: 'awards',
+    short: 'Awards',
     title: 'Awards & leadership',
     layer: 'emboss',
     items: [
@@ -149,6 +154,7 @@ export const SECTIONS = [
 
   {
     id: 'contact',
+    short: 'Contact',
     title: 'Contact',
     layer: 'softmax',
     items: [
