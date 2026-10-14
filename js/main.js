@@ -38,6 +38,10 @@ const convs = () => stack.filter((l) => !LAYERS[l.id].output).sort((a, b) => a.l
 const outputs = () => stack.filter((l) => LAYERS[l.id].output);
 const ordered = () => [...convs(), ...outputs()];
 const inLayer = (i) => stack.filter((l) => l.layer === i).length;
+// Each kernel can appear at most as many times as its section has depth
+// levels (3): more copies would add nothing.
+const maxCopies = (id) => (LAYERS[id].output ? 1 : sections.maxDepth(sectionFor(id).id));
+const copies = (id) => stack.filter((l) => l.id === id).length;
 
 // Runs and other changes happen one at a time.
 let queue = Promise.resolve();
@@ -53,6 +57,9 @@ function addLayer(id, point) {
     stack.push({ id, key: nextKey++, applied: false });
     update();
     return announce(`Added ${label} as the output. Press Run to apply the network.`);
+  }
+  if (copies(id) >= maxCopies(id)) {
+    return announce(`${label} is already in your network ${maxCopies(id)} times, the most it can add.`);
   }
   let target = (point && network.layerAt(point.x, point.y)) ?? active;
   let created = false;
@@ -241,7 +248,7 @@ function update() {
 
   const counts = {};
   for (const l of stack) counts[l.id] = (counts[l.id] || 0) + 1;
-  tiles.setCounts(counts);
+  tiles.setCounts(counts, maxCopies);
   sections.setDepths(Object.fromEntries(sections.sections.map((s) => [s.id, applied(s.layer)])));
   network.render({ filters: convs(), outputs: outputs(), layerCount, active, running, changed });
   const labels = ordered().filter((l) => l.applied).map((l) => LAYERS[l.id].label);

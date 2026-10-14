@@ -330,6 +330,10 @@ a.item-meta { color: var(--ink); text-underline-offset: 3px; }
 .tile:hover { border-color: var(--muted); }
 .tile.is-applied { border-color: var(--ink); }
 .tile.is-dragging { opacity: 0.35; }
+/* At its limit: contents dim, the ×3 badge stays clear. */
+.tile.is-max { cursor: not-allowed; }
+.tile.is-max > :not(.tile-count) { opacity: 0.4; }
+.tile.is-max:hover { border-color: var(--ink); }
 
 .tile-matrix {
   position: relative;
@@ -371,16 +375,13 @@ a.item-meta { color: var(--ink); text-underline-offset: 3px; }
   color: var(--ink);
 }
 
-/* A kernel's scale factor (e.g. ÷16) sits in the box's corner so it
-   never changes the tile's size. */
-.tile-divisor {
-  position: absolute;
-  top: -4px;
-  right: -14px;
-  font-size: 9px;
+.tile-label { white-space: nowrap; }
+.tile-detail {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
   color: var(--muted);
 }
-.tile-label { white-space: nowrap; }
 
 .tile-count {
   position: absolute;
@@ -688,7 +689,7 @@ a.item-meta:focus-visible {
     padding: 4px;
   }
   .tile-matrix { width: 60px; }
-  .tile-divisor { top: auto; bottom: -15px; right: 0; font-size: 8px; }
+  .tile-detail { display: none; }
   .tile-label { font-size: 10px; }
   .tile-kind { display: none; }
 

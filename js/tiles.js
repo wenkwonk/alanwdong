@@ -19,14 +19,20 @@ export function createTiles(container, layers, targets, choose) {
   }
 
   return {
-    // Show how many times each tile is in the network.
-    setCounts(counts) {
+    // Show how many times each tile is in the network, and which have
+    // reached their limit (`max(id)` copies).
+    setCounts(counts, max) {
       for (const [id, btn] of Object.entries(buttons)) {
         const n = counts[id] || 0;
+        const full = n >= max(id);
         btn.classList.toggle('is-applied', n > 0);
+        btn.classList.toggle('is-max', full);
+        btn.setAttribute('aria-disabled', String(full));
         btn.querySelector('.tile-count').textContent = n > 1 ? `×${n}` : '';
         const label = layers[id].label;
-        btn.setAttribute('aria-label', n ? `${label}, in your network ${n} time${n > 1 ? 's' : ''}` : label);
+        btn.setAttribute('aria-label', n
+          ? `${label}, in your network ${n} time${n > 1 ? 's' : ''}${full ? ' (maximum)' : ''}`
+          : label);
       }
     },
 
@@ -84,20 +90,16 @@ function tileFace(layer) {
   const matrix = document.createElement('span');
   matrix.className = 'tile-matrix';
   matrix.append(grid);
-  if (layer.divisor) {
-    const d = document.createElement('span');
-    d.className = 'tile-divisor';
-    d.setAttribute('aria-hidden', 'true');
-    d.textContent = `÷${layer.divisor}`;
-    matrix.append(d);
-  }
   const label = document.createElement('span');
   label.className = 'tile-label';
   const [kind, name] = layer.label.split(' · ');
   const kindEl = document.createElement('span');
   kindEl.className = 'tile-kind';
   kindEl.textContent = `${kind} · `;
-  label.append(kindEl, name);
+  const detail = document.createElement('span');
+  detail.className = 'tile-detail';
+  detail.textContent = layer.detail;
+  label.append(kindEl, name, detail);
   const count = document.createElement('span');
   count.className = 'tile-count';
   count.setAttribute('aria-hidden', 'true');

@@ -12,7 +12,7 @@ const tap = (f, k) => Math.max(1, Math.round(k * f));
 //   label    shown on the tile and in the layer chips
 //   kernel   the 3×3 weights drawn on the tile and in the sweep window
 //            (layers without one show `formula` instead)
-//   divisor  shown as "÷n" when the weights are scaled
+//   detail   a short description under the tile's name (incl. any scaling)
 //   output   marks the softmax output layer (no kernel, no `run`)
 //   run(x, w, h, f, src)
 //            convolves image `x` (w × h ink values) and returns the result.
@@ -27,6 +27,7 @@ const tap = (f, k) => Math.max(1, Math.round(k * f));
 export const LAYERS = {
   edges: {
     label: 'conv · edges',
+    detail: 'Sobel · horizontal',
     kernel: SOBEL_X,
     run(x, w, h) {
       // Sobel x and y (y is x transposed), magnitude, over a dimmed input.
@@ -38,8 +39,8 @@ export const LAYERS = {
 
   blur: {
     label: 'conv · blur',
+    detail: 'Gaussian · ÷16',
     kernel: [1, 2, 1, 2, 4, 2, 1, 2, 1],
-    divisor: 16,
     run(x, w, h, f) {
       // The Gaussian kernel, applied three times on the pooled map.
       const b = convolveAtScale(x, w, h, tap(f, 1.5), G, G, G);
@@ -50,6 +51,7 @@ export const LAYERS = {
 
   sharpen: {
     label: 'conv · sharpen',
+    detail: 'center-weighted',
     kernel: SHARPEN,
     run(x, w, h, f) {
       // sharpen = identity + Laplacian. Add the Laplacian (from the pooled
@@ -63,6 +65,7 @@ export const LAYERS = {
 
   emboss: {
     label: 'conv · emboss',
+    detail: 'diagonal relief',
     kernel: EMBOSS,
     run(x, w, h, f) {
       // Smooth, take the emboss relief, smooth again, add it as a bevel.
@@ -74,6 +77,7 @@ export const LAYERS = {
 
   softmax: {
     label: 'output · softmax',
+    detail: 'output layer',
     output: true,
     formula: 'eᶻ/Σeᶻ',
     // Not a kernel: the output layer. It turns the dense layer's scores into
