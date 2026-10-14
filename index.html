@@ -17,8 +17,8 @@
       <div class="stage">
         <canvas id="name-canvas" role="img" aria-label="Alan Dong"></canvas>
       </div>
-      <p class="subtitle">ML for biological images.</p>
-      <p id="classification" class="classification" hidden>Classification: Alan · 99.2%</p>
+      <p id="subtitle" class="subtitle">ML for biological images.</p>
+      <p id="classification" class="classification" hidden></p>
 
       <div class="stack-row">
         <ol id="chips" class="chips" aria-label="Applied layers"></ol>
@@ -27,14 +27,31 @@
 
       <aside class="palette" aria-labelledby="palette-hint">
         <p id="palette-hint" class="hint">
-          <span class="hint-drag">Drag a layer onto my name.</span>
-          <span class="hint-tap">Tap a layer to apply it.</span>
+          <span class="hint-drag"></span>
+          <span class="hint-tap"></span>
         </p>
         <div id="tiles" class="tiles"></div>
       </aside>
     </header>
 
+    <div id="sections" class="sections"></div>
+
+    <noscript>
+      <p class="noscript">This page needs JavaScript to show its content. Reach me at
+        <a href="mailto:awdong@andrew.cmu.edu">awdong@andrew.cmu.edu</a> ·
+        <a href="https://www.linkedin.com/in/alan-w-dong">LinkedIn</a> ·
+        <a href="https://github.com/wenkwonk">GitHub</a></p>
+    </noscript>
+
     <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>
   </main>
+
+  <nav class="bottom-nav" aria-label="Sections">
+    <a href="#projects" data-open="projects">Projects</a>
+    <a href="#experience" data-open="experience">Experience</a>
+    <a href="#skills" data-open="skills">Skills</a>
+    <a href="#awards" data-open="awards">Awards</a>
+    <a href="#contact" data-open="contact">Contact</a>
+  </nav>
 </body>
 </html>

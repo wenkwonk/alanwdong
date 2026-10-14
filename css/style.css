@@ -48,6 +48,7 @@ body {
 .hero {
   min-height: 100vh;
   min-height: 100svh;
+  transition: min-height 0.5s cubic-bezier(.2,.8,.2,1);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -257,6 +258,158 @@ body {
   .stage { width: min(100% - 440px, 960px); }
 }
 
+/* Once any section is showing, the intro shrinks so content sits just
+   below the name instead of a full screen away. */
+body.has-sections .hero {
+  min-height: 64vh;
+  min-height: 64svh;
+}
+
+body { padding-bottom: 72px; } /* room for the fixed bottom nav */
+
+/* Content sections */
+.sections {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.section { padding: 48px 0 24px; }
+.section:not([hidden]) ~ .section:not([hidden]) { border-top: 1px solid var(--line); }
+
+.section-layer {
+  margin: 0 0 6px;
+  font: 12px/1.4 var(--mono);
+  color: var(--muted);
+}
+
+.section-title {
+  margin: 0 0 24px;
+  font: 700 28px/1.2 'Inter', var(--sans);
+  letter-spacing: -0.02em;
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 24px;
+}
+
+.item-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.item-meta {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+a.item-meta { color: var(--ink); text-underline-offset: 3px; }
+
+.item-summary {
+  margin: 10px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.item-details {
+  list-style: disc;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--ink) 82%, var(--bg));
+}
+.item-details li + li { margin-top: 6px; }
+
+.more {
+  margin-top: 24px;
+  padding: 8px 12px;
+  font: 12px/1 var(--mono);
+  color: var(--muted);
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.more:hover { color: var(--ink); border-color: var(--muted); }
+
+.noscript {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 16px;
+  color: var(--muted);
+}
+
+/* Reveal animation for sections and newly deeper content. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+}
+.entering { animation: rise 0.45s cubic-bezier(.2,.8,.2,1) both; }
+
+/* Plain text nav, always reachable without dragging anything. */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 0;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.bottom-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.bottom-nav a:hover { color: var(--ink); }
+.bottom-nav a + a::before {
+  content: '·';
+  margin: 0 10px 0 6px;
+  color: var(--line);
+}
+
+.more:focus-visible,
+.bottom-nav a:focus-visible,
+a.item-meta:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  body.has-sections .hero {
+    min-height: 0;
+    padding-top: 56px;
+    padding-bottom: 8px;
+  }
+  .bottom-nav { font-size: 13px; padding-left: 8px; padding-right: 8px; }
+  .bottom-nav a { padding: 2px 1px; }
+  .bottom-nav a + a::before { margin: 0 6px 0 5px; }
+}
+
+[hidden] { display: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; }
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+  html { scroll-behavior: auto; }
 }

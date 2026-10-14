@@ -11,13 +11,11 @@ const RELIEF = EMBOSS.map((v, i) => (i === 4 ? v - 1 : v));
 // convolution with the input instead of replacing it, so stacking builds the
 // look up rather than eroding it.
 //
-// `section` is the content section the tile reveals (see content.js); each
-// repeat of the tile reveals that section in more depth.
+// Which content section a tile reveals is set in content.js (`layer`).
 // `output: true` marks a final stage that always runs after every conv layer.
 export const LAYERS = {
   edges: {
     label: 'conv · edges',
-    section: 'projects',
     run(x, w, h) {
       const e = sobel(x, w, h);
       // Full-strength outline over a dimmed copy of the input.
@@ -28,7 +26,6 @@ export const LAYERS = {
 
   blur: {
     label: 'conv · blur',
-    section: 'skills',
     run(x, w, h, s) {
       // Gaussian at ~3 CSS px per sample, 4 passes: a soft focus with a halo.
       const b = convolveAtScale(x, w, h, Math.round(3 * s), G, G, G, G);
@@ -39,7 +36,6 @@ export const LAYERS = {
 
   sharpen: {
     label: 'conv · sharpen',
-    section: 'experience',
     run(x, w, h, s) {
       // Unsharp mask: add back (input − Gaussian), i.e. the high-frequency
       // detail. Overshoot outside the letters goes negative and draws as a
@@ -53,7 +49,6 @@ export const LAYERS = {
 
   emboss: {
     label: 'conv · emboss',
-    section: 'awards',
     run(x, w, h, s) {
       // Smooth, take the emboss relief, smooth again, then add it to the
       // input as a bevel.
@@ -65,7 +60,6 @@ export const LAYERS = {
 
   softmax: {
     label: 'output · softmax',
-    section: 'contact',
     output: true,
     // Not a kernel: restores the crisp name on top of whatever the network
     // did, with a soft glow. `src` is the untouched rendering.
