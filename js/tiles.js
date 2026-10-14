@@ -11,8 +11,7 @@ export function createTiles(container, layers, target, apply) {
     btn.type = 'button';
     btn.className = 'tile';
     btn.dataset.id = id;
-    btn.innerHTML = `<span class="tile-label"></span><span class="tile-count" aria-hidden="true"></span>`;
-    btn.querySelector('.tile-label').textContent = layer.label;
+    btn.append(tileFace(layer));
     enableDrag(btn, target, () => apply(id));
     container.append(btn);
     buttons[id] = btn;
@@ -30,6 +29,51 @@ export function createTiles(container, layers, target, apply) {
       }
     },
   };
+}
+
+// The tile shows what the layer really is: its 3×3 weights (or, for the
+// softmax output layer, a probability vector), its name, and a repeat count.
+function tileFace(layer) {
+  const face = document.createDocumentFragment();
+  const grid = document.createElement('span');
+  grid.setAttribute('aria-hidden', 'true');
+  if (layer.kernel) {
+    grid.className = 'tile-kernel';
+    for (const v of layer.kernel) {
+      const c = document.createElement('span');
+      c.textContent = v;
+      grid.append(c);
+    }
+  } else {
+    grid.className = 'tile-kernel tile-probs';
+    for (const v of layer.probs) {
+      const c = document.createElement('span');
+      c.textContent = v;
+      grid.append(c);
+    }
+  }
+  const matrix = document.createElement('span');
+  matrix.className = 'tile-matrix';
+  matrix.append(grid);
+  if (layer.divisor) {
+    const d = document.createElement('span');
+    d.className = 'tile-divisor';
+    d.setAttribute('aria-hidden', 'true');
+    d.textContent = `÷${layer.divisor}`;
+    matrix.append(d);
+  }
+  const label = document.createElement('span');
+  label.className = 'tile-label';
+  const [kind, name] = layer.label.split(' · ');
+  const kindEl = document.createElement('span');
+  kindEl.className = 'tile-kind';
+  kindEl.textContent = `${kind} · `;
+  label.append(kindEl, name);
+  const count = document.createElement('span');
+  count.className = 'tile-count';
+  count.setAttribute('aria-hidden', 'true');
+  face.append(matrix, label, count);
+  return face;
 }
 
 function enableDrag(btn, target, onApply) {

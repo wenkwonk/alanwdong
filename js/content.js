@@ -11,8 +11,8 @@
 export const SITE = {
   name: 'Alan Dong',
   subtitle: 'ML for biological images.',
-  classification: 'Classification: Alan · 99.2%',
   hintDrag: 'Drag a layer onto my name.',
+  hintDragPage: 'Drag another layer onto the page.',
   hintTap: 'Tap a layer to apply it.',
 };
 

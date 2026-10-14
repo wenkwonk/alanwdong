@@ -1,24 +1,34 @@
-import { sobel, convolveAtScale, GAUSSIAN, EMBOSS } from './conv.js';
+import { sobel, convolveAtScale, GAUSSIAN, SHARPEN, EMBOSS, SOBEL_X } from './conv.js';
 
 const G = GAUSSIAN;
-// EMBOSS minus the identity kernel: the emboss without the input added back,
-// i.e. pure directional relief (lit from the top-left).
-const RELIEF = EMBOSS.map((v, i) => (i === 4 ? v - 1 : v));
+// A kernel minus the identity: what the kernel adds on top of its input.
+const minusIdentity = (k) => k.map((v, i) => (i === 4 ? v - 1 : v));
+const SHARPEN_DETAIL = minusIdentity(SHARPEN);  // the Laplacian
+const EMBOSS_RELIEF = minusIdentity(EMBOSS);    // directional relief
 
-// Every tile is one entry here. `run(x, w, h, s)` receives the current image
-// (output of the previous layer), its size, and `s` = device pixels per CSS
-// pixel, and returns the next image. Layers are residual: they combine their
-// convolution with the input instead of replacing it, so stacking builds the
-// look up rather than eroding it.
+const tap = (f, k) => Math.max(1, Math.round(k * f));
+
+// Every tile is one entry here.
+//   label    shown on the tile and in the layer chips
+//   kernel   the 3×3 weights drawn on the tile and in the sweep window
+//   divisor  shown as "÷n" when the weights are scaled
+//   run(x, w, h, f, src)
+//            convolves image `x` (w × h ink values) and returns the result.
+//            `f` is the feature size in pixels: big text (the name) gets a
+//            larger f than body text so every effect reads at either size.
+//            Kernels act at that scale by running on a pooled copy, like a
+//            CNN layer on a downsampled feature map.
 //
-// Which content section a tile reveals is set in content.js (`layer`).
-// `output: true` marks a final stage that always runs after every conv layer.
+// Layers are residual: they combine their output with the input, so the
+// content underneath stays legible. Which section a tile reveals is set in
+// content.js (`layer`).
 export const LAYERS = {
   edges: {
     label: 'conv · edges',
+    kernel: SOBEL_X,
     run(x, w, h) {
+      // Sobel x and y (y is x transposed), magnitude, over a dimmed input.
       const e = sobel(x, w, h);
-      // Full-strength outline over a dimmed copy of the input.
       for (let i = 0; i < e.length; i++) e[i] = Math.max(0.18 * x[i], e[i]);
       return e;
     },
@@ -26,33 +36,35 @@ export const LAYERS = {
 
   blur: {
     label: 'conv · blur',
-    run(x, w, h, s) {
-      // Gaussian at ~3 CSS px per sample, 4 passes: a soft focus with a halo.
-      const b = convolveAtScale(x, w, h, Math.round(3 * s), G, G, G, G);
-      for (let i = 0; i < b.length; i++) b[i] = 0.3 * x[i] + 0.95 * b[i];
+    kernel: [1, 2, 1, 2, 4, 2, 1, 2, 1],
+    divisor: 16,
+    run(x, w, h, f) {
+      // The Gaussian kernel, applied three times on the pooled map.
+      const b = convolveAtScale(x, w, h, tap(f, 1.5), G, G, G);
+      for (let i = 0; i < b.length; i++) b[i] = 0.25 * x[i] + 0.9 * b[i];
       return b;
     },
   },
 
   sharpen: {
     label: 'conv · sharpen',
-    run(x, w, h, s) {
-      // Unsharp mask: add back (input − Gaussian), i.e. the high-frequency
-      // detail. Overshoot outside the letters goes negative and draws as a
-      // shadow ring; inside it pushes past full ink.
-      const b = convolveAtScale(x, w, h, Math.round(4 * s), G, G);
-      const out = new Float32Array(x.length);
-      for (let i = 0; i < x.length; i++) out[i] = x[i] + 2.2 * (x[i] - b[i]);
-      return out;
+    kernel: SHARPEN,
+    run(x, w, h, f) {
+      // sharpen = identity + Laplacian. Add the Laplacian (from the pooled
+      // map, so it is smooth when scaled back up) to the full-res input.
+      // Overshoot outside strokes goes negative and draws as a shadow ring.
+      const d = convolveAtScale(x, w, h, tap(f, 1), G, SHARPEN_DETAIL);
+      for (let i = 0; i < d.length; i++) d[i] = x[i] + 2.5 * d[i];
+      return d;
     },
   },
 
   emboss: {
     label: 'conv · emboss',
-    run(x, w, h, s) {
-      // Smooth, take the emboss relief, smooth again, then add it to the
-      // input as a bevel.
-      const r = convolveAtScale(x, w, h, Math.round(2 * s), G, G, G, RELIEF, G);
+    kernel: EMBOSS,
+    run(x, w, h, f) {
+      // Smooth, take the emboss relief, smooth again, add it as a bevel.
+      const r = convolveAtScale(x, w, h, tap(f, 1), G, G, EMBOSS_RELIEF, G);
       for (let i = 0; i < r.length; i++) r[i] = x[i] + 1.1 * r[i];
       return r;
     },
@@ -61,15 +73,12 @@ export const LAYERS = {
   softmax: {
     label: 'output · softmax',
     output: true,
-    // Not a kernel: restores the crisp name on top of whatever the network
-    // did, with a soft glow. `src` is the untouched rendering.
-    run(x, w, h, s, src) {
-      const glow = convolveAtScale(src, w, h, Math.round(4 * s), G, G, G, G);
-      const out = new Float32Array(x.length);
-      for (let i = 0; i < x.length; i++) {
-        out[i] = Math.max(0.35 * x[i] + 0.5 * glow[i], src[i]);
-      }
-      return out;
+    probs: ['.992', '.006', '.002'],
+    // Not a kernel: the output layer. Keeps the input crisp and lets it glow.
+    run(x, w, h, f, src) {
+      const glow = convolveAtScale(src, w, h, tap(f, 2), G, G, G, G);
+      for (let i = 0; i < glow.length; i++) glow[i] = Math.max(0.6 * glow[i], src[i]);
+      return glow;
     },
   },
 };
