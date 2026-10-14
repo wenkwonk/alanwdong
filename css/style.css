@@ -101,11 +101,13 @@ h1 {
 }
 .branches path {
   fill: none;
-  stroke: var(--line);
+  stroke: rgb(255 255 255 / 0.22);
   stroke-width: 1;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
 }
+/* The route this person takes through the tree. */
+.branches path.is-path { stroke: rgb(255 255 255 / 0.85); stroke-width: 1.5; }
 
 .tree-root {
   position: relative;
@@ -149,6 +151,18 @@ h1 {
   align-items: center;
 }
 
+.split {
+  /* Sits just right of the branch line coming down to the node. */
+  align-self: flex-start;
+  position: relative;
+  left: 50%;
+  margin-left: 8px;
+  margin-bottom: 8px;
+  font: 11px/1 var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .node-box {
   max-width: 100%;
   padding: 10px 14px;
@@ -178,6 +192,22 @@ h1 {
   color: var(--soft);
 }
 .leaf-summary { margin: 0; }
+.leaf-link { margin: 8px 0 0; font-size: 14px; }
+.leaf-link a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--faint);
+}
+.leaf-link a:hover { border-bottom-color: var(--ink); }
+.leaf-value {
+  margin: 8px 0 0;
+  font: 12px/1 var(--mono);
+  color: var(--faint);
+}
+
+/* The node on the path: solid box, its leaf value lit. */
+.node.is-path .node-box { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
+.node.is-path .leaf-value { color: var(--ink); }
 .leaf-details {
   list-style: disc;
   margin: 10px 0 0;
@@ -214,6 +244,33 @@ h1 {
   transition: opacity 0.3s ease;
 }
 .running-sum.on { opacity: 1; }
+.running-sum b { color: var(--ink); font-weight: 600; }
+
+.loss-chart {
+  position: fixed;
+  right: 20px;
+  bottom: 16px;
+  margin: 0;
+  padding: 8px 10px 4px;
+  width: 200px;
+  background: rgb(0 0 0 / 0.8);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.loss-chart.on { opacity: 1; }
+.loss-chart figcaption {
+  font: 10px/1 var(--mono);
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.loss { display: block; width: 100%; height: auto; overflow: visible; }
+.loss .axis { stroke: rgb(255 255 255 / 0.25); stroke-width: 1; }
+.loss .tick { fill: var(--faint); font: 8px var(--mono); }
+.loss .curve { fill: none; stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
+.loss .dot { fill: #fff; }
 .running-sum span { transition: color 0.3s ease; }
 .running-sum span.on { color: var(--ink); }
 
@@ -260,6 +317,9 @@ a:focus-visible {
   .node { align-items: flex-start; }
   .node-box { text-align: left; }
   .leaf { margin-top: 12px; max-width: none; text-align: left; }
+  .split { left: auto; margin-left: 0; margin-bottom: 6px; }
+  .loss-chart { width: 140px; right: 10px; bottom: 52px; }
+  .running-sum { font-size: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
