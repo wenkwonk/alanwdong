@@ -73,8 +73,32 @@ h1 {
 }
 .contact a:hover { color: var(--ink); border-bottom-color: var(--ink); }
 
+.visitor {
+  margin-top: 36px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font: 12px/1 var(--mono);
+}
+.visitor-label { color: var(--muted); }
+.visitor-choices { display: inline-flex; gap: 6px; }
+.visitor-choices button {
+  padding: 7px 12px;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+}
+.visitor-choices button:hover { color: var(--ink); border-color: var(--muted); }
+.visitor-choices button[aria-pressed="true"] { color: #000; background: #fff; border-color: #fff; }
+
 .hero > .equation {
-  margin-top: 40px;
+  margin-top: 22px;
   font: 14px/1.4 var(--mono);
   color: var(--muted);
 }
@@ -165,12 +189,16 @@ h1 {
 
 .node-box {
   max-width: 100%;
+  font: inherit;
+  color: inherit;
   padding: 10px 14px;
   text-align: center;
   background: #000;
   border: 1px solid rgb(255 255 255 / 0.55);
   border-radius: 10px;
 }
+button.node-box { cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s, opacity 0.45s, transform 0.45s; }
+button.node-box:hover { border-color: #fff; }
 .node-box h3 {
   margin: 0;
   font-size: 15px;
@@ -199,6 +227,30 @@ h1 {
   border-bottom: 1px solid var(--faint);
 }
 .leaf-link a:hover { border-bottom-color: var(--ink); }
+.more-toggle {
+  margin-top: 8px;
+  padding: 2px 0;
+  font: 12px/1 var(--mono);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.more-toggle:hover { color: var(--ink); }
+.leaf.open { max-width: 40ch; }
+.leaf-more {
+  list-style: disc;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.leaf-more li + li { margin-top: 6px; }
+.leaf-more:not([hidden]) { animation: open 0.35s ease both; }
+@keyframes open { from { opacity: 0; transform: translateY(-4px); } }
+
 .leaf-value {
   margin: 8px 0 0;
   font: 12px/1 var(--mono);
@@ -207,7 +259,31 @@ h1 {
 
 /* The node on the path: solid box, its leaf value lit. */
 .node.is-path .node-box { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
-.node.is-path .leaf-value { color: var(--ink); }
+.node.is-path .more-toggle {
+  margin-top: 8px;
+  padding: 2px 0;
+  font: 12px/1 var(--mono);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.more-toggle:hover { color: var(--ink); }
+.leaf.open { max-width: 40ch; }
+.leaf-more {
+  list-style: disc;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.leaf-more li + li { margin-top: 6px; }
+.leaf-more:not([hidden]) { animation: open 0.35s ease both; }
+@keyframes open { from { opacity: 0; transform: translateY(-4px); } }
+
+.leaf-value { color: var(--ink); }
 .leaf-details {
   list-style: disc;
   margin: 10px 0 0;
@@ -245,6 +321,7 @@ h1 {
 }
 .running-sum.on { opacity: 1; }
 .running-sum b { color: var(--ink); font-weight: 600; }
+.running-sum i { font-style: normal; color: var(--muted); }
 
 .running-sum span { transition: color 0.3s ease; }
 .running-sum span.on { color: var(--ink); }
@@ -271,7 +348,8 @@ h1 {
 
 /* ---------- Focus ---------- */
 
-a:focus-visible {
+a:focus-visible,
+button:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 4px;
   border-radius: 2px;
@@ -293,9 +371,21 @@ a:focus-visible {
   .node-box { text-align: left; }
   .leaf { margin-top: 12px; max-width: none; text-align: left; }
   .split { left: auto; margin-left: 0; margin-bottom: 6px; }
-  .running-sum { font-size: 12px; }
+  .running-sum {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
+    font-size: 12px;
+    text-align: center;
+    background: #000;
+    border-top: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 0;
+  }
+  body { padding-bottom: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }

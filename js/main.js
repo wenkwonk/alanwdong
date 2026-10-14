@@ -28,15 +28,31 @@ function renderTree(tree, i) {
 
   const list = h('ul', { class: 'tree-nodes', style: `--n: ${tree.nodes.length}` });
   tree.nodes.forEach((node, j) => {
-    const box = h('div', { class: 'node-box reveal' }, h('h3', {}, node.title));
+    const moreId = `${tree.id}-more-${j}`;
+    // A node with more to say is a button that opens it.
+    const box = node.more
+      ? h('button', { type: 'button', class: 'node-box reveal', 'aria-expanded': 'false', 'aria-controls': moreId }, h('h3', {}, node.title))
+      : h('div', { class: 'node-box reveal' }, h('h3', {}, node.title));
     if (node.meta) box.append(h('p', { class: 'node-meta' }, node.meta));
-    const li = h('li', { class: `node${j === tree.path ? ' is-path' : ''}` });
+    const li = h('li', { class: 'node' });
     // The branch's split condition, then the node.
     if (node.split) li.append(h('span', { class: 'split reveal', 'aria-hidden': 'true' }, node.split));
     li.append(box);
     const leaf = h('div', { class: 'leaf reveal' });
     if (node.summary) leaf.append(h('p', { class: 'leaf-summary' }, ...rich(node.summary)));
-    if (node.details) leaf.append(h('ul', { class: 'leaf-details' }, ...node.details.map((d) => h('li', {}, ...rich(d)))));
+    if (node.more) {
+      const more = h('ul', { class: 'leaf-more', id: moreId, hidden: '' }, ...node.more.map((d) => h('li', {}, ...rich(d))));
+      const toggle = h('button', { type: 'button', class: 'more-toggle', 'aria-expanded': 'false', 'aria-controls': moreId }, 'more ↓');
+      const set = (open) => {
+        more.hidden = !open;
+        leaf.classList.toggle('open', open);
+        toggle.textContent = open ? 'less ↑' : 'more ↓';
+        for (const b of [box, toggle]) b.setAttribute('aria-expanded', String(open));
+      };
+      box.addEventListener('click', () => set(more.hidden));
+      toggle.addEventListener('click', () => set(more.hidden));
+      leaf.append(toggle, more);
+    }
     if (node.link) {
       leaf.append(h('p', { class: 'leaf-link' },
         h('a', { href: node.link.href, target: '_blank', rel: 'noopener' }, `${node.link.label} ↗`)));
@@ -56,17 +72,52 @@ const treesEl = document.getElementById('trees');
 treesEl.append(...TREES.map(renderTree));
 
 document.querySelector('.equation').textContent = `ŷ = ${terms.join(' + ')}`;
-// What each tree adds: the value of the leaf on its path. They sum to 1.
-const contrib = TREES.map((t) => t.nodes[t.path]?.value ?? 0);
-const total = contrib.reduce((a, b) => a + b, 0);
-document.querySelector('.outro-eq').textContent = `${terms.join(' + ')} = ${total.toFixed(2)}`;
+
+// ---------- Who's visiting? ----------
+// The visitor is the input: each tree routes them to one node, and what the
+// tree adds to ŷ is that node's leaf value. With no choice, my own path.
+
+let visitor = null;
+try { visitor = localStorage.getItem('visitor'); } catch { /* storage unavailable */ }
+if (!SITE.visitors.includes(visitor)) visitor = null;
+
+const pathOf = (tree) => (visitor ? tree.routes[visitor] : tree.path);
+let contrib = [];
+
+const picker = document.querySelector('.visitor-choices');
+const choices = SITE.visitors.map((v) => {
+  const b = h('button', { type: 'button', 'aria-pressed': 'false' }, v);
+  b.addEventListener('click', () => setVisitor(visitor === v ? null : v));
+  picker.append(b);
+  return b;
+});
+
+function setVisitor(v) {
+  visitor = v;
+  try { v ? localStorage.setItem('visitor', v) : localStorage.removeItem('visitor'); } catch { /* fine */ }
+  applyPaths();
+  drawBranches();
+}
+
+function applyPaths() {
+  choices.forEach((b, i) => b.setAttribute('aria-pressed', String(SITE.visitors[i] === visitor)));
+  [...treesEl.children].forEach((section, i) => {
+    const p = pathOf(TREES[i]);
+    section.querySelectorAll('.node').forEach((node, j) => node.classList.toggle('is-path', j === p));
+  });
+  contrib = TREES.map((t) => t.nodes[pathOf(t)]?.value ?? 0);
+  const total = contrib.reduce((a, b) => a + b, 0);
+  document.querySelector('.outro-eq').textContent = `${terms.join(' + ')} = ${total.toFixed(2)}`;
+  sumInput.textContent = visitor ? `x = ${visitor} · ` : '';
+}
 document.querySelector('.outro-next').textContent = SITE.next;
 document.querySelector('.outro .contact').append(...SITE.contact.map((c) =>
   h('li', {}, h('a', { href: c.href, ...(c.href.startsWith('http') ? { rel: 'noopener' } : {}) }, c.label))));
 
 const sumEl = document.querySelector('.running-sum');
 const sumValue = h('b', {}, '0.00');
-sumEl.append('ŷ = ', ...terms.flatMap((t, i) => [i ? ' + ' : '', h('span', {}, t)]), ' = ', sumValue);
+const sumInput = h('i', {});
+sumEl.append(sumInput, 'ŷ = ', ...terms.flatMap((t, i) => [i ? ' + ' : '', h('span', {}, t)]), ' = ', sumValue);
 const sumTerms = [...sumEl.querySelectorAll('span')];
 
 // ---------- Branches ----------
@@ -173,5 +224,6 @@ new ResizeObserver(() => {
 }).observe(treesEl);
 
 reveals = [...document.querySelectorAll('.reveal')];
+applyPaths();
 document.fonts.ready.then(drawBranches);
 drawBranches();
