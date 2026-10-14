@@ -170,10 +170,11 @@ h1 {
 }
 
 .leaf {
-  margin-top: 36px;
-  width: 100%;
-  font-size: 14px;
-  line-height: 1.6;
+  margin-top: 30px;
+  max-width: 30ch;
+  font-size: 15px;
+  line-height: 1.55;
+  text-align: center;
   color: var(--soft);
 }
 .leaf-summary { margin: 0; }
@@ -258,7 +259,7 @@ a:focus-visible {
   }
   .node { align-items: flex-start; }
   .node-box { text-align: left; }
-  .leaf { margin-top: 12px; }
+  .leaf { margin-top: 12px; max-width: none; text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {
