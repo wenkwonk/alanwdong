@@ -1,86 +1,122 @@
-const DRAG_THRESHOLD = 4; // px before a press on a plate becomes a reorder drag
+export const MAX_LAYERS = 3;
+export const MAX_FILTERS = 3;   // per layer
+const DRAG_THRESHOLD = 4;       // px before a press on a filter becomes a drag
 
-// The network panel: the layers you have built, drawn as a stack of plates
-// (input at the top, softmax always last), with a Run button. Conv plates
-// can be reordered by dragging, or with ↑/↓ when focused. Plates for layers
-// included in the last run are solid; new ones are dashed; all of them light
+// The network panel. The input at the top, then each conv layer as a group
+// of filters (drawn as plates), then the softmax output if added. Click a
+// layer's header to select it: new filters go to the selected layer. Filters
+// can be dragged to another layer, or moved with ↑/↓ when focused. Filters
+// included in the last run are solid; new ones are dashed; everything lights
 // up while the network runs.
-export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove }) {
+export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, onSelect, onAddLayer }) {
   root.innerHTML = `
     <p class="net-title">Your network</p>
-    <ol class="net-stack" aria-label="Layers in your network, in order">
-      <li class="net-row net-input">
+    <div class="net-flow">
+      <div class="net-row net-input">
         <span class="plate plate-input" aria-hidden="true"></span>
         <span class="net-label"><span class="net-kind">input · </span>name</span>
-      </li>
-    </ol>
-    <p class="net-empty">Drop layers here.</p>
+      </div>
+      <ol class="net-layers" aria-label="Layers"></ol>
+      <button type="button" class="net-add">+ Layer</button>
+      <div class="net-output"></div>
+    </div>
     <button type="button" class="net-run"></button>
     <button type="button" class="net-reset">Reset</button>
     <p class="net-note" data-text="networkNote"></p>`;
-  const list = root.querySelector('.net-stack');
-  const empty = root.querySelector('.net-empty');
+  const groups = root.querySelector('.net-layers');
+  const output = root.querySelector('.net-output');
+  const addBtn = root.querySelector('.net-add');
   const runBtn = root.querySelector('.net-run');
   const resetBtn = root.querySelector('.net-reset');
   runBtn.addEventListener('click', onRun);
   resetBtn.addEventListener('click', onReset);
-  const rows = new Map();   // key → <li>
+  addBtn.addEventListener('click', onAddLayer);
+  const rows = new Map();   // key → row element
+
+  function filterRow({ id, key, applied }, running, where) {
+    const row = document.createElement('li');
+    row.className = 'net-row';
+    row.classList.toggle('is-pending', !applied);
+    row.classList.toggle('is-running', running);
+    const isConv = !layers[id].output;
+    const plate = document.createElement('span');
+    plate.className = `plate ${isConv ? '' : 'plate-output'}`;
+    plate.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'net-label';
+    const [kind, name] = layers[id].label.split(' · ');
+    label.innerHTML = '<span class="net-kind"></span>';
+    label.firstChild.textContent = `${kind} · `;
+    label.append(name);
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'net-remove';
+    x.textContent = '×';
+    x.setAttribute('aria-label', `Remove ${layers[id].label}${where}`);
+    x.disabled = running;
+    x.addEventListener('click', () => onRemove(key));
+    row.append(plate, label, x);
+    if (isConv && !running) {
+      row.tabIndex = 0;
+      row.classList.add('is-movable');
+      row.setAttribute('aria-label', `${layers[id].label}${where}${applied ? '' : ', not run yet'}. Arrow keys move it between layers.`);
+      row.addEventListener('keydown', (e) => {
+        if (e.target !== row || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+        e.preventDefault();
+        onMove(key, { by: e.key === 'ArrowUp' ? -1 : 1 });
+      });
+      enableDrag(row, groups, (layer) => onMove(key, { to: layer }));
+    }
+    rows.set(key, row);
+    return row;
+  }
 
   return {
-    // `ordered`: [{ id, key, applied }] in run order. `running`: a run is on.
-    // `changed`: the network differs from the last run (e.g. reordered).
-    render(ordered, running, changed) {
-      const focusedKey = [...rows].find(([, li]) => li === document.activeElement)?.[0];
-      for (const row of rows.values()) row.remove();
+    // state: { filters: [{ id, key, applied, layer }], outputs: [...],
+    //          layerCount, active, running, changed }
+    render({ filters, outputs, layerCount, active, running, changed }) {
+      const focusedKey = [...rows].find(([, r]) => r === document.activeElement)?.[0];
       rows.clear();
-      const convCount = ordered.filter((l) => !layers[l.id].output).length;
-      let position = 0;
-      for (const { id, key, applied } of ordered) {
-        const isConv = !layers[id].output;
-        if (isConv) position++;
-        const li = document.createElement('li');
-        li.className = 'net-row';
-        li.classList.toggle('is-pending', !applied);
-        li.classList.toggle('is-running', running);
-        const plate = document.createElement('span');
-        plate.className = `plate ${isConv ? '' : 'plate-output'}`;
-        plate.setAttribute('aria-hidden', 'true');
-        const label = document.createElement('span');
-        label.className = 'net-label';
-        const [kind, name] = layers[id].label.split(' · ');
-        label.innerHTML = '<span class="net-kind"></span>';
-        label.firstChild.textContent = `${kind} · `;
-        label.append(name);
-        const x = document.createElement('button');
-        x.type = 'button';
-        x.className = 'net-remove';
-        x.textContent = '×';
-        x.setAttribute('aria-label', `Remove ${layers[id].label}`);
-        x.disabled = running;
-        x.addEventListener('click', () => onRemove(key));
-        li.append(plate, label, x);
-        if (isConv && !running) {
-          li.tabIndex = 0;
-          li.classList.add('is-movable');
-          li.setAttribute('aria-label', `${layers[id].label}, layer ${position} of ${convCount}${applied ? '' : ', not run yet'}. Arrow keys move it.`);
-          li.addEventListener('keydown', (e) => {
-            if (e.target !== li || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
-            e.preventDefault();
-            onMove(key, e.key === 'ArrowUp' ? -1 : 1);
-          });
-          enableReorder(li, list, (steps) => onMove(key, steps));
+      groups.replaceChildren();
+      for (let i = 0; i < layerCount; i++) {
+        const inLayer = filters.filter((f) => f.layer === i);
+        const g = document.createElement('li');
+        g.className = 'net-layer';
+        g.dataset.layer = i;
+        g.classList.toggle('is-active', i === active && !running);
+        const head = document.createElement('button');
+        head.type = 'button';
+        head.className = 'net-layer-head';
+        head.textContent = `Layer ${i + 1}`;
+        const count = document.createElement('span');
+        count.textContent = ` · ${inLayer.length}/${MAX_FILTERS}`;
+        head.append(count);
+        head.setAttribute('aria-pressed', String(i === active));
+        head.setAttribute('aria-label', `Layer ${i + 1}, ${inLayer.length} of ${MAX_FILTERS} filters${i === active ? ', selected' : ''}`);
+        head.disabled = running;
+        head.addEventListener('click', () => onSelect(i));
+        const list = document.createElement('ul');
+        list.className = 'net-filters';
+        for (const f of inLayer) list.append(filterRow(f, running, `, layer ${i + 1}`));
+        if (!inLayer.length) {
+          const hint = document.createElement('li');
+          hint.className = 'net-layer-empty';
+          hint.textContent = 'Drop filters here';
+          list.append(hint);
         }
-        list.append(li);
-        rows.set(key, li);
+        g.append(head, list);
+        groups.append(g);
       }
+      output.replaceChildren(...outputs.map((o) => filterRow(o, running, '')));
       if (focusedKey != null) rows.get(focusedKey)?.focus();
 
-      const needsRun = ordered.some((l) => !l.applied) || changed;
-      empty.hidden = ordered.length > 0;
-      runBtn.disabled = !needsRun || running;
-      runBtn.textContent = running ? 'Running…'
-        : needsRun ? `▶ Run ${ordered.length} layer${ordered.length > 1 ? 's' : ''}` : '▶ Run';
-      resetBtn.hidden = ordered.length === 0;
+      const all = [...filters, ...outputs];
+      const needsRun = all.some((l) => !l.applied) || changed;
+      addBtn.hidden = layerCount >= MAX_LAYERS;
+      addBtn.disabled = running;
+      runBtn.disabled = !needsRun || running || !filters.length && !outputs.length;
+      runBtn.textContent = running ? 'Running…' : '▶ Run';
+      resetBtn.hidden = all.length === 0;
       resetBtn.disabled = running;
     },
 
@@ -88,49 +124,51 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove }
       return rows.get(key)?.querySelector('.plate').getBoundingClientRect();
     },
 
+    // Which layer group is under a viewport point (for tile drops), or null.
+    layerAt(x, y) {
+      const g = document.elementFromPoint(x, y)?.closest('.net-layer');
+      return g && root.contains(g) ? Number(g.dataset.layer) : null;
+    },
+
     focusRun: () => runBtn.focus(),
   };
 }
 
-// Drag a conv plate along the stack (vertical panel or horizontal strip).
-// Calls move(steps) with how many places it moved, + toward the output.
-function enableReorder(li, list, move) {
-  li.addEventListener('pointerdown', (e) => {
+// Drag a filter to another layer group. Calls drop(layerIndex).
+function enableDrag(row, groups, drop) {
+  row.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.target.closest('button')) return;
-    const vertical = getComputedStyle(list).flexDirection.startsWith('column');
-    const axis = vertical ? 'clientY' : 'clientX';
-    const start = e[axis];
-    const siblings = [...list.querySelectorAll('.is-movable')];
-    const index = siblings.indexOf(li);
-    const mids = siblings.map((s) => {
-      const r = s.getBoundingClientRect();
-      return vertical ? r.top + r.height / 2 : r.left + r.width / 2;
-    });
+    const sx = e.clientX, sy = e.clientY;
     let dragging = false;
-    li.setPointerCapture(e.pointerId);
-
-    const onMoveEvt = (ev) => {
-      const d = ev[axis] - start;
-      if (!dragging && Math.abs(d) < DRAG_THRESHOLD) return;
+    row.setPointerCapture(e.pointerId);
+    const target = (ev) => {
+      for (const g of groups.children) {
+        const r = g.getBoundingClientRect();
+        if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) return g;
+      }
+      return null;
+    };
+    const onMove = (ev) => {
+      if (!dragging && Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_THRESHOLD) return;
       dragging = true;
-      li.classList.add('is-dragging');
-      li.style.transform = vertical ? `translateY(${d}px)` : `translateX(${d}px)`;
+      row.classList.add('is-dragging');
+      row.style.transform = `translate(${ev.clientX - sx}px, ${ev.clientY - sy}px)`;
+      const over = target(ev);
+      for (const g of groups.children) g.classList.toggle('drop-ready', g === over);
     };
     const onUp = (ev) => {
-      li.removeEventListener('pointermove', onMoveEvt);
-      li.removeEventListener('pointerup', onUp);
-      li.removeEventListener('pointercancel', onUp);
-      li.classList.remove('is-dragging');
-      li.style.transform = '';
+      row.removeEventListener('pointermove', onMove);
+      row.removeEventListener('pointerup', onUp);
+      row.removeEventListener('pointercancel', onUp);
+      row.classList.remove('is-dragging');
+      row.style.transform = '';
+      for (const g of groups.children) g.classList.remove('drop-ready');
       if (!dragging || ev.type === 'pointercancel') return;
-      // New index: how many other plates' midpoints the pointer has passed.
-      const p = mids[index] + (ev[axis] - start);
-      let target = 0;
-      mids.forEach((m, i) => { if (i !== index && p > m) target++; });
-      if (target !== index) move(target - index);
+      const over = target(ev);
+      if (over) drop(Number(over.dataset.layer));
     };
-    li.addEventListener('pointermove', onMoveEvt);
-    li.addEventListener('pointerup', onUp);
-    li.addEventListener('pointercancel', onUp);
+    row.addEventListener('pointermove', onMove);
+    row.addEventListener('pointerup', onUp);
+    row.addEventListener('pointercancel', onUp);
   });
 }

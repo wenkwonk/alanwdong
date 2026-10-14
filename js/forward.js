@@ -5,24 +5,25 @@ import { paint, theme } from './paint.js';
 import { drawSweep } from './sweep.js';
 
 // Hand-set weight of the dense layer: each section's logit is this times
-// the mean of the pooled features from its own kernel's layers (a sparse,
-// block-structured weight matrix with zero bias). Not trained.
+// the mean of the pooled features from the maps its kernel produced (a
+// sparse, block-structured weight matrix with zero bias). Not trained.
 const DENSE_WEIGHT = 8;
+const SVG = 'http://www.w3.org/2000/svg';
 
-// The forward pass, animated. The layers run in sequence: the name is the
-// input to layer 1, and every layer convolves the previous layer's output
-// (conv → ReLU). Each layer's output appears as a feature map next to the
-// last; its kernel flies in from the network and sweeps across. Every
-// layer's output is then max-pooled and concatenated (a skip-connection /
-// hypercolumn head), a dense layer + softmax scores each section, and the
-// page is generated with sections in score order.
+// The forward pass, animated. Layers run in sequence and each has one or
+// more filters. A filter convolves *every* map from the previous layer with
+// its 3×3 kernel and sums the results with equal weights, then ReLU: a real
+// multi-channel convolution whose weight tensor is hand-set (the same kernel
+// for each input channel, scaled by 1/inputs). Layer 1's only input is the
+// name. Every map from every layer is then max-pooled and concatenated (a
+// skip-connection / hypercolumn head), a dense layer + softmax scores each
+// section, and the page is generated with sections in score order.
 //
 //   canvas     the name's <canvas>
 //   area       viewport rect to lay the feature maps out in
-//   layers     [{ id, from }] conv layers in order (from: rect the tile
-//              flies from)
-//   classes    [{ id, section, title }] one per kernel type: the section it
-//              scores, read from that kernel's layers
+//   net        [[{ id, from }, …], …] filters per layer, in order
+//              (from: rect the tile flies from)
+//   classes    [{ id, section, title }] one per kernel type
 //   softmax    whether the network ends in a softmax output layer
 //   fly        (id, fromRect, toPoint, ms) => Promise, the automatic drag
 //   generate   (point, instant, ranking) => Promise, shows the page growing
@@ -30,29 +31,44 @@ const DENSE_WEIGHT = 8;
 //   instant    skip all animation (still computes everything)
 //
 // Any click or keypress skips to the end.
-export async function forwardPass({ canvas, area, layers, classes, softmax, fly, generate, instant }) {
+export async function forwardPass({ canvas, area, net, classes, softmax, fly, generate, instant }) {
   const ctl = createSkip();
   if (instant) ctl.skip();
   const root = document.createElement('div');
   try {
     const nameRect = canvas.getBoundingClientRect();
-    const scale = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(1e6 / (nameRect.width * nameRect.height)));
+    // The maps are shown small, so compute at modest resolution.
+    const scale = Math.min(window.devicePixelRatio || 1, 2, 720 / nameRect.width);
     const src = rasterize(canvas.parentElement, nameRect, scale);
+    const N = src.w * src.h;
     const colors = theme();
     const inputImg = paint(src.buf, src.w, src.h, colors);
 
-    // Compute the whole pass up front: layer i's input is layer i-1's output.
-    const maps = [];
-    let prev = src.buf;
-    for (const L of layers) {
-      const out = relu(LAYERS[L.id].run(prev, src.w, src.h, scale * 2, src.buf));
-      const levels = [];
-      let lv = { buf: out, w: src.w, h: src.h };
-      while (lv.w > 16 && levels.length < 6) levels.push((lv = maxPool(lv.buf, lv.w, lv.h)));
-      maps.push({ ...L, out, output: paint(out, src.w, src.h, colors), levels, features: lv.buf });
-      prev = out;
+    // Compute the whole pass up front.
+    const columns = [];   // per layer: { input (image of the mean input), maps }
+    const maps = [];      // every filter's output, all layers
+    let prev = [src.buf];
+    for (const filters of net) {
+      const mean = new Float32Array(N);
+      for (const inp of prev) for (let i = 0; i < N; i++) mean[i] += inp[i] / prev.length;
+      const col = { input: prev.length === 1 ? inputImg : paint(mean, src.w, src.h, colors), maps: [] };
+      for (const f of filters) {
+        const out = new Float32Array(N);
+        for (const inp of prev) {
+          const o = LAYERS[f.id].run(inp, src.w, src.h, scale * 2, src.buf);
+          for (let i = 0; i < N; i++) out[i] += o[i] / prev.length;
+        }
+        relu(out);
+        const levels = [];
+        let lv = { buf: out, w: src.w, h: src.h };
+        while (lv.w > 16 && levels.length < 5) levels.push((lv = maxPool(lv.buf, lv.w, lv.h)));
+        const m = { ...f, out, output: paint(out, src.w, src.h, colors), levels, features: lv.buf };
+        col.maps.push(m);
+        maps.push(m);
+      }
+      columns.push(col);
+      prev = col.maps.map((m) => m.out);
     }
-    maps.forEach((m, i) => (m.input = i ? maps[i - 1].output : inputImg));
     const head = classify(classes, maps, softmax);
 
     root.className = 'fp';
@@ -65,7 +81,13 @@ export async function forwardPass({ canvas, area, layers, classes, softmax, fly,
 
     if (maps.length && !ctl.skipped) {
       const ar = src.w / src.h;
-      const slots = layout(maps.length + 1, area, ar);
+      const grid = layout([1, ...columns.map((c) => c.maps.length)], area, ar);
+      const svg = document.createElementNS(SVG, 'svg');
+      svg.setAttribute('class', 'fp-links');
+      svg.setAttribute('width', area.width);
+      svg.setAttribute('height', area.height);
+      root.append(svg);
+
       const card = (slot, text, img) => {
         const fig = document.createElement('figure');
         fig.className = 'fp-map';
@@ -79,38 +101,50 @@ export async function forwardPass({ canvas, area, layers, classes, softmax, fly,
         label.textContent = text;
         fig.append(cv, label);
         root.append(fig);
-        const c = { fig, cv, ctx, k: src.w / slot.w };
+        const c = { fig, cv, ctx, k: src.w / slot.w, slot };
         cards.push(c);
         return c;
       };
 
-      // The name moves into the first slot: the network's input.
-      const first = card(slots[0], 'input', inputImg);
-      const s0 = slots[0];
+      // The name moves into the input slot.
+      const s0 = grid[0][0];
+      const first = card(s0, 'input', inputImg);
       await ctl.animate(first.fig, [
         { transform: `translate(${nameRect.left - area.left - s0.x}px, ${nameRect.top - area.top - s0.y}px) scale(${nameRect.width / s0.w})` },
         { transform: 'none' },
       ], { duration: 500, easing: 'cubic-bezier(.2,.8,.2,1)' });
 
-      // Each layer in turn: a copy of the previous map slides into the next
-      // slot, the kernel flies onto it, and the sweep convolves it.
-      for (const [i, m] of maps.entries()) {
-        const s = slots[i + 1], p = slots[i];
-        m.card = card(s, `${i + 1} · ${LAYERS[m.id].label} → ReLU`, m.input);
-        ctl.animate(m.card.fig, [
-          { transform: `translate(${p.x - s.x}px, ${p.y - s.y}px)`, opacity: 0 },
-          { transform: 'none', opacity: 1 },
-        ], { duration: 350, easing: 'cubic-bezier(.2,.8,.2,1)' });
-        if (!ctl.skipped) {
-          const target = { x: area.left + s.x + s.w / 2, y: area.top + s.y + s.w / ar / 2 };
-          await ctl.race(fly(m.id, m.from, target, 450));
+      // Layer by layer: every filter's map appears, wired to every map of
+      // the previous layer; the kernels fly in and all sweep at once.
+      let prevCards = [first];
+      for (const [li, col] of columns.entries()) {
+        const slots = grid[li + 1];
+        const lines = [];
+        for (const [fi, m] of col.maps.entries()) {
+          const s = slots[fi];
+          m.card = card(s, `L${li + 1} · ${LAYERS[m.id].label.split(' · ')[1]}`, col.input);
+          for (const pc of prevCards) lines.push(link(svg, pc.slot, s, ar, area.width < 600));
+          const from = prevCards[0].slot;
+          ctl.animate(m.card.fig, [
+            { transform: `translate(${from.x - s.x}px, ${from.y - s.y}px)`, opacity: 0 },
+            { transform: 'none', opacity: 1 },
+          ], { duration: 350, easing: 'cubic-bezier(.2,.8,.2,1)' });
         }
-        await ctl.frames(450, (t) => drawSweep(m.card.ctx, m.input, m.output, LAYERS[m.id], t, m.card.k, colors));
+        for (const l of lines) ctl.animate(l, [{ opacity: 0 }, { opacity: 1 }], { duration: 350 });
+        if (!ctl.skipped) {
+          await ctl.race(Promise.all(col.maps.map((m) => fly(m.id, m.from,
+            { x: area.left + m.card.slot.x + m.card.slot.w / 2, y: area.top + m.card.slot.y + m.card.slot.w / ar / 2 }, 450))));
+        }
+        await ctl.frames(450, (t) => {
+          for (const m of col.maps) drawSweep(m.card.ctx, col.input, m.output, LAYERS[m.id], t, m.card.k, colors);
+        });
+        prevCards = col.maps.map((m) => m.card);
       }
 
-      // Max-pool every layer's output at once while the maps shrink; the
-      // input map, which isn't pooled, fades.
+      // Max-pool every map at once while they shrink; the input and the
+      // wiring fade.
       ctl.animate(first.fig, [{ opacity: 1 }, { opacity: 0.25 }], { duration: 300 });
+      ctl.animate(svg, [{ opacity: 1 }, { opacity: 0 }], { duration: 300 });
       for (const m of maps) {
         m.card.ctx.imageSmoothingEnabled = false;
         m.card.fig.style.transformOrigin = '50% 50%';   // shrink in place
@@ -129,9 +163,9 @@ export async function forwardPass({ canvas, area, layers, classes, softmax, fly,
       // Concatenate: every map flies into the middle.
       await Promise.all(cards.map((c) => {
         const r = c.fig.getBoundingClientRect();
-        const from = getComputedStyle(c.fig).transform;
+        const t = getComputedStyle(c.fig).transform;
         return ctl.animate(c.fig, [
-          { transform: from === 'none' ? 'none' : from, opacity: getComputedStyle(c.fig).opacity },
+          { transform: t === 'none' ? 'none' : t, opacity: getComputedStyle(c.fig).opacity },
           { transform: `translate(${merge.x - center(r).x}px, ${merge.y - center(r).y}px) scale(0.08)`, opacity: 0 },
         ], { duration: 500, easing: 'cubic-bezier(.6,0,.4,1)' });
       }));
@@ -159,10 +193,23 @@ export async function forwardPass({ canvas, area, layers, classes, softmax, fly,
   }
 }
 
+// A faint line from one map to another (right edge → left edge, or bottom →
+// top when the layers are stacked vertically).
+function link(svg, a, b, ar, vertical) {
+  const ah = a.w / ar, bh = b.w / ar;
+  const [x1, y1, x2, y2] = vertical
+    ? [a.x + a.w / 2, a.y + ah, b.x + b.w / 2, b.y]
+    : [a.x + a.w, a.y + ah / 2, b.x, b.y + bh / 2];
+  const line = document.createElementNS(SVG, 'line');
+  Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => line.setAttribute(k, v));
+  svg.append(line);
+  return line;
+}
+
 // Dense layer + softmax over the concatenated pooled features. One class
-// (section) per kernel type, reading the features of that kernel's layers.
-// Returns [{ section, title, z, p }] sorted by score, highest first; `p` is
-// null when the network has no softmax layer.
+// (section) per kernel type, reading the features of every map that kernel
+// produced. Returns [{ section, title, z, p }] sorted by score, highest
+// first; `p` is null when the network has no softmax layer.
 function classify(classes, maps, softmax) {
   const rows = classes.map((c) => {
     let sum = 0, n = 0;
@@ -224,24 +271,32 @@ function headPanel(maps, head, softmax, colors) {
   return panel;
 }
 
-// Lay out n maps of aspect `ar` (w/h) in a centred grid inside `area`,
-// read left to right, top to bottom.
-function layout(n, area, ar) {
-  const gap = 20, label = 22;
-  const cols = area.width < 600 ? (n <= 3 ? 1 : 2) : n <= 2 ? n : n === 4 ? 2 : 3;
-  const rows = Math.ceil(n / cols);
-  const fitW = (area.width - gap * (cols - 1)) / cols;
-  const fitH = (area.height * 0.85 - (rows - 1) * gap) / rows - label;
-  const w = Math.min(fitW, fitH * ar, 520);
+// Lay out the maps: one column per layer (the input first), each column's
+// maps stacked and centred; on narrow screens columns become rows. `counts`
+// is maps per column. Returns slots[column][i] = { x, y, w } in area coords.
+function layout(counts, area, ar) {
+  const gap = 16, label = 20;
+  const vertical = area.width < 600;
+  const lanes = counts.length, most = Math.max(...counts);
+  let w;
+  if (vertical) {
+    w = Math.min((area.width - gap * (most - 1)) / most, ((area.height * 0.9 - gap * (lanes - 1)) / lanes - label) * ar);
+  } else {
+    const gx = 40;   // room between columns for the wiring
+    w = Math.min((area.width - gx * (lanes - 1)) / lanes, ((area.height * 0.85 - gap * (most - 1)) / most - label) * ar, 260);
+  }
   const h = w / ar + label;
-  const totalH = rows * h + (rows - 1) * gap;
-  const y0 = (area.height - totalH) / 2;
-  return Array.from({ length: n }, (_, i) => {
-    const r = Math.floor(i / cols);
-    const inRow = Math.min(cols, n - r * cols);
-    const x0 = (area.width - (inRow * w + (inRow - 1) * gap)) / 2;
-    return { x: x0 + (i % cols) * (w + gap), y: y0 + r * (h + gap), w };
-  });
+  return counts.map((n, c) => Array.from({ length: n }, (_, i) => {
+    if (vertical) {
+      const rowY = (area.height - (lanes * h + (lanes - 1) * gap)) / 2 + c * (h + gap);
+      const x0 = (area.width - (n * w + (n - 1) * gap)) / 2;
+      return { x: x0 + i * (w + gap), y: rowY, w };
+    }
+    const gx = (area.width - lanes * w) / Math.max(1, lanes - 1);
+    const x = lanes === 1 ? (area.width - w) / 2 : c * (w + Math.min(gx, 80)) + (area.width - (lanes * w + (lanes - 1) * Math.min(gx, 80))) / 2;
+    const y0 = (area.height - (n * h + (n - 1) * gap)) / 2;
+    return { x, y: y0 + i * (h + gap), w };
+  }));
 }
 
 const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });

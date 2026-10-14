@@ -3,7 +3,7 @@ import { LAYERS } from './layers.js';
 import { createStage } from './stage.js';
 import { createTiles } from './tiles.js';
 import { createSections } from './sections.js';
-import { createNetwork } from './network.js';
+import { createNetwork, MAX_LAYERS, MAX_FILTERS } from './network.js';
 import { forwardPass } from './forward.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -17,48 +17,87 @@ const status = $('#status');
 createStage(canvas, SITE.name);
 const tiles = createTiles($('#tiles'), LAYERS, [networkEl, stageEl], addLayer);
 const sections = createSections($('#sections'), LAYERS, moreDetail);
-const network = createNetwork(networkEl, LAYERS, { onRun: run, onRemove: removeLayer, onReset: reset, onMove: moveLayer });
+const network = createNetwork(networkEl, LAYERS, {
+  onRun: run, onRemove: removeLayer, onReset: reset, onMove: moveLayer, onSelect: selectLayer, onAddLayer: addNetworkLayer,
+});
 for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
 
-// The whole UI state: the layers in your network, in the order added.
-// `applied` marks the ones included in the last run. The page shows a section
-// for every applied layer, at a depth equal to how many times it appears.
+// The whole UI state: the filters in your network. Each conv filter has a
+// `layer` (0-based); the softmax output has none. `applied` marks the ones
+// included in the last run. The page shows a section for every applied
+// kernel type, at a depth equal to how many times that kernel appears.
 let stack = [];
 let nextKey = 0;
+let layerCount = 1;
+let active = 0;         // the selected layer: where new filters go
 let running = false;
-let changed = false;    // the network was reordered since the last run
+let changed = false;    // filters moved between layers since the last run
 let showName = false;   // during a run: show the name even if layers applied
 const applied = (id) => stack.filter((l) => l.id === id && l.applied).length;
-// Network order: conv layers as added, output layers (softmax) last.
-const ordered = () => [...stack.filter((l) => !LAYERS[l.id].output), ...stack.filter((l) => LAYERS[l.id].output)];
+const convs = () => stack.filter((l) => !LAYERS[l.id].output).sort((a, b) => a.layer - b.layer);
+const outputs = () => stack.filter((l) => LAYERS[l.id].output);
+const ordered = () => [...convs(), ...outputs()];
+const inLayer = (i) => stack.filter((l) => l.layer === i).length;
 
 // Runs and other changes happen one at a time.
 let queue = Promise.resolve();
 const enqueue = (fn) => (queue = queue.then(fn, fn));
 
-function addLayer(id) {
-  stack.push({ id, key: nextKey++, applied: false });
-  update();
-  announce(`Added ${LAYERS[id].label} to your network. Press Run to apply it.`);
-}
-
-// A forward pass of the whole network over the name: split into feature maps,
-// convolve, pool, merge, and generate the page.
-// Move a conv layer `steps` places along the network (softmax stays last).
-function moveLayer(key, steps) {
+// Add a tile to the network: a conv filter goes to the layer it was dropped
+// on, or else the selected layer; softmax becomes the output (once).
+function addLayer(id, point) {
   if (running) return;
-  const convs = stack.filter((l) => !LAYERS[l.id].output);
-  const from = convs.findIndex((l) => l.key === key);
-  const to = Math.max(0, Math.min(convs.length - 1, from + steps));
-  if (from < 0 || to === from) return;
-  const [l] = convs.splice(from, 1);
-  convs.splice(to, 0, l);
-  stack = [...convs, ...stack.filter((x) => LAYERS[x.id].output)];
-  changed = stack.some((x) => x.applied);
+  const label = LAYERS[id].label;
+  if (LAYERS[id].output) {
+    if (outputs().length) return announce('The network already ends in softmax.');
+    stack.push({ id, key: nextKey++, applied: false });
+    update();
+    return announce(`Added ${label} as the output. Press Run to apply the network.`);
+  }
+  const target = (point && network.layerAt(point.x, point.y)) ?? active;
+  if (inLayer(target) >= MAX_FILTERS) return announce(`Layer ${target + 1} is full (${MAX_FILTERS} filters). Add a layer or pick another one.`);
+  stack.push({ id, key: nextKey++, applied: false, layer: target });
+  active = target;
   update();
-  announce(`${LAYERS[l.id].label} moved to layer ${to + 1} of ${convs.length}.`);
+  announce(`Added ${label} to layer ${target + 1}. Press Run to apply the network.`);
 }
 
+function selectLayer(i) {
+  active = i;
+  update();
+  announce(`Layer ${i + 1} selected. New filters go here.`);
+}
+
+function addNetworkLayer() {
+  if (running || layerCount >= MAX_LAYERS) return;
+  active = layerCount++;
+  update();
+  announce(`Layer ${active + 1} added and selected.`);
+}
+
+// Move a filter to another layer: { to: index } or { by: ±1 }.
+function moveLayer(key, { to, by }) {
+  const f = stack.find((l) => l.key === key);
+  if (running || !f) return;
+  const target = Math.max(0, Math.min(layerCount - 1, to ?? f.layer + by));
+  if (target === f.layer) return;
+  if (inLayer(target) >= MAX_FILTERS) return announce(`Layer ${target + 1} is full.`);
+  f.layer = target;
+  changed = stack.some((l) => l.applied);
+  update();
+  announce(`${LAYERS[f.id].label} moved to layer ${target + 1}.`);
+}
+
+// Somewhere a filter can go: the selected layer if it has room, else any
+// layer with room, else a new layer. Null if the network is full.
+function roomyLayer() {
+  if (inLayer(active) < MAX_FILTERS) return active;
+  for (let i = 0; i < layerCount; i++) if (inLayer(i) < MAX_FILTERS) return i;
+  return layerCount < MAX_LAYERS ? layerCount++ : null;
+}
+
+// A forward pass of the whole network over the name: feature maps layer by
+// layer, pooling, a dense + softmax head, then the page.
 function run() {
   enqueue(async () => {
     if (!stack.some((l) => !l.applied) && !changed) return;
@@ -75,17 +114,21 @@ function run() {
       update();
     }
 
-    // Conv layers in network order; one output class per kernel type.
-    const convs = ordered().filter((l) => !LAYERS[l.id].output);
-    const layers = convs.map((l) => ({ id: l.id, from: network.plateRect(l.key) }));
-    const classes = [...new Set(convs.map((l) => l.id))]
+    // Filters grouped by layer (empty layers skipped); one output class per
+    // kernel type.
+    const net = [];
+    for (let i = 0; i < layerCount; i++) {
+      const filters = convs().filter((l) => l.layer === i);
+      if (filters.length) net.push(filters.map((l) => ({ id: l.id, from: network.plateRect(l.key) })));
+    }
+    const classes = [...new Set(convs().map((l) => l.id))]
       .map((id) => ({ id, section: sectionFor(id).id, title: sectionFor(id).title }));
 
     let ranking = [];
     await forwardPass({
       canvas,
       area: mapArea(),
-      layers,
+      net,
       classes,
       softmax: stack.some((l) => LAYERS[l.id].output),
       fly: tiles.fly,
@@ -123,8 +166,14 @@ function growFrom(point) {
 function openFully(sectionId) {
   const sec = sections.sections.find((s) => s.id === sectionId);
   enqueue(async () => {
-    while (stack.filter((l) => l.id === sec.layer).length < sections.maxDepth(sectionId)) {
-      stack.push({ id: sec.layer, key: nextKey++, applied: false });
+    // Each extra copy needs room; softmax only ever appears once.
+    const isOutput = LAYERS[sec.layer].output;
+    const want = isOutput ? 1 : sections.maxDepth(sectionId);
+    while (stack.filter((l) => l.id === sec.layer).length < want) {
+      if (isOutput) { stack.push({ id: sec.layer, key: nextKey++, applied: false }); continue; }
+      const layer = roomyLayer();
+      if (layer == null) break;
+      stack.push({ id: sec.layer, key: nextKey++, applied: false, layer });
     }
     applyNow();
     await scrollToSection(sectionId, 'start');
@@ -134,7 +183,9 @@ function openFully(sectionId) {
 // "More detail" in a section: one more of its layer, applied at once.
 function moreDetail(id) {
   enqueue(() => {
-    stack.push({ id, key: nextKey++, applied: false });
+    const layer = roomyLayer();
+    if (layer == null) return announce('The network is full: remove a filter first.');
+    stack.push({ id, key: nextKey++, applied: false, layer });
     applyNow();
   });
 }
@@ -157,6 +208,8 @@ function removeLayer(key) {
 function reset() {
   enqueue(() => {
     stack = [];
+    layerCount = 1;
+    active = 0;
     changed = false;
     crossfade();
     window.scrollTo({ top: 0 });
@@ -180,7 +233,7 @@ function update() {
   for (const l of stack) counts[l.id] = (counts[l.id] || 0) + 1;
   tiles.setCounts(counts);
   sections.setDepths(Object.fromEntries(sections.sections.map((s) => [s.id, applied(s.layer)])));
-  network.render(ordered(), running, changed);
+  network.render({ filters: convs(), outputs: outputs(), layerCount, active, running, changed });
   const labels = ordered().filter((l) => l.applied).map((l) => LAYERS[l.id].label);
   canvas.setAttribute('aria-label', labels.length ? `${SITE.name}, processed by: ${labels.join(', ')}` : SITE.name);
 }

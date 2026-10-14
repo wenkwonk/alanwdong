@@ -2,8 +2,8 @@ const DRAG_THRESHOLD = 6; // px of movement before a press becomes a drag
 
 // Builds a <button> per layer in `container`. Every way of choosing a tile
 // (click, tap, Enter/Space, or dragging it onto one of `targets`) calls
-// choose(id). Dragging uses Pointer Events so it works the same for mouse,
-// pen and touch.
+// choose(id, point); `point` is the drop position for drags, else undefined.
+// Dragging uses Pointer Events so it works the same for mouse, pen and touch.
 export function createTiles(container, layers, targets, choose) {
   const buttons = {};
 
@@ -13,7 +13,7 @@ export function createTiles(container, layers, targets, choose) {
     btn.className = 'tile';
     btn.dataset.id = id;
     btn.append(tileFace(layer));
-    enableDrag(btn, targets, () => choose(id));
+    enableDrag(btn, targets, (point) => choose(id, point));
     container.append(btn);
     buttons[id] = btn;
   }
@@ -142,7 +142,7 @@ function enableDrag(btn, targets, onDrop) {
     const g = ghost;
     ghost = null;
     if (hit) {
-      onDrop();
+      onDrop({ x: e.clientX, y: e.clientY });
       fadeOut(g);
     } else {
       flyBack(g, btn);
