@@ -32,7 +32,7 @@ export function createTiles(container, layers, targets, choose) {
 
     // The automatic drag: a copy of the tile flies from `from` (a rect) to
     // the point `to`, as if someone dragged it there. Resolves on landing.
-    fly(id, from, to) {
+    fly(id, from, to, duration = 700) {
       const g = buttons[id].cloneNode(true);
       g.classList.add('tile-ghost');
       g.setAttribute('aria-hidden', 'true');
@@ -45,7 +45,7 @@ export function createTiles(container, layers, targets, choose) {
         { transform: `translate(${x0}px, ${y0}px) scale(1)` },
         { transform: `translate(${(x0 + x1) / 2}px, ${(y0 + y1) / 2 - lift}px) scale(1.06)`, offset: 0.5 },
         { transform: `translate(${x1}px, ${y1}px) scale(1)` },
-      ], { duration: 700, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' });
+      ], { duration, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' });
       return a.finished.then(() => {
         g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).onfinish = () => g.remove();
       });

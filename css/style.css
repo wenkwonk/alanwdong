@@ -454,6 +454,16 @@ a.item-meta { color: var(--ink); text-underline-offset: 3px; }
 }
 .net-row.is-running .net-label { font-weight: 700; }
 
+.net-row.is-movable { cursor: grab; border-radius: 6px; touch-action: none; }
+.net-row.is-movable:hover .plate { transform: perspective(160px) rotateX(58deg) rotateZ(-38deg) translateZ(6px); }
+.net-row.is-dragging {
+  position: relative;
+  z-index: 2;
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--ink) 6%, var(--bg));
+}
+.net-row:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
 .net-label {
   white-space: nowrap;
   overflow: hidden;

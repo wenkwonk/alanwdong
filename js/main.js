@@ -17,7 +17,7 @@ const status = $('#status');
 createStage(canvas, SITE.name);
 const tiles = createTiles($('#tiles'), LAYERS, [networkEl, stageEl], addLayer);
 const sections = createSections($('#sections'), LAYERS, moreDetail);
-const network = createNetwork(networkEl, LAYERS, { onRun: run, onRemove: removeLayer, onReset: reset });
+const network = createNetwork(networkEl, LAYERS, { onRun: run, onRemove: removeLayer, onReset: reset, onMove: moveLayer });
 for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE[el.dataset.text];
 
 // The whole UI state: the layers in your network, in the order added.
@@ -26,6 +26,7 @@ for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE
 let stack = [];
 let nextKey = 0;
 let running = false;
+let changed = false;    // the network was reordered since the last run
 let showName = false;   // during a run: show the name even if layers applied
 const applied = (id) => stack.filter((l) => l.id === id && l.applied).length;
 // Network order: conv layers as added, output layers (softmax) last.
@@ -43,9 +44,24 @@ function addLayer(id) {
 
 // A forward pass of the whole network over the name: split into feature maps,
 // convolve, pool, merge, and generate the page.
+// Move a conv layer `steps` places along the network (softmax stays last).
+function moveLayer(key, steps) {
+  if (running) return;
+  const convs = stack.filter((l) => !LAYERS[l.id].output);
+  const from = convs.findIndex((l) => l.key === key);
+  const to = Math.max(0, Math.min(convs.length - 1, from + steps));
+  if (from < 0 || to === from) return;
+  const [l] = convs.splice(from, 1);
+  convs.splice(to, 0, l);
+  stack = [...convs, ...stack.filter((x) => LAYERS[x.id].output)];
+  changed = stack.some((x) => x.applied);
+  update();
+  announce(`${LAYERS[l.id].label} moved to layer ${to + 1} of ${convs.length}.`);
+}
+
 function run() {
   enqueue(async () => {
-    if (!stack.some((l) => !l.applied)) return;
+    if (!stack.some((l) => !l.applied) && !changed) return;
     running = true;
     const animate = !reducedMotion();
 
@@ -59,21 +75,18 @@ function run() {
       update();
     }
 
-    // One channel per conv kernel; repeats deepen that channel.
-    const channels = [];
-    for (const l of ordered()) {
-      if (LAYERS[l.id].output) continue;
-      const ch = channels.find((c) => c.id === l.id);
-      if (ch) ch.count++;
-      else channels.push({ id: l.id, count: 1, key: l.key, section: sectionFor(l.id).id, title: sectionFor(l.id).title });
-    }
-    for (const ch of channels) ch.from = network.plateRect(ch.key);
+    // Conv layers in network order; one output class per kernel type.
+    const convs = ordered().filter((l) => !LAYERS[l.id].output);
+    const layers = convs.map((l) => ({ id: l.id, from: network.plateRect(l.key) }));
+    const classes = [...new Set(convs.map((l) => l.id))]
+      .map((id) => ({ id, section: sectionFor(id).id, title: sectionFor(id).title }));
 
     let ranking = [];
     await forwardPass({
       canvas,
       area: mapArea(),
-      channels,
+      layers,
+      classes,
       softmax: stack.some((l) => LAYERS[l.id].output),
       fly: tiles.fly,
       instant: !animate,
@@ -82,6 +95,7 @@ function run() {
         sections.setOrder(rank);
         for (const l of stack) l.applied = true;
         showName = false;
+        changed = false;
         update();
         if (!instant) return growFrom(point);
       },
@@ -143,6 +157,7 @@ function removeLayer(key) {
 function reset() {
   enqueue(() => {
     stack = [];
+    changed = false;
     crossfade();
     window.scrollTo({ top: 0 });
     announce('Network cleared.');
@@ -165,7 +180,7 @@ function update() {
   for (const l of stack) counts[l.id] = (counts[l.id] || 0) + 1;
   tiles.setCounts(counts);
   sections.setDepths(Object.fromEntries(sections.sections.map((s) => [s.id, applied(s.layer)])));
-  network.render(ordered(), running);
+  network.render(ordered(), running, changed);
   const labels = ordered().filter((l) => l.applied).map((l) => LAYERS[l.id].label);
   canvas.setAttribute('aria-label', labels.length ? `${SITE.name}, processed by: ${labels.join(', ')}` : SITE.name);
 }
