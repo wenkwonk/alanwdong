@@ -101,11 +101,45 @@ body.page-mode .stage {
   letter-spacing: 0.01em;
 }
 
-/* The convolution overlay (see sweep.js). */
-.sweep {
+/* The forward pass (see forward.js): feature maps, pooling, merge. */
+.fp {
   position: fixed;
   z-index: 20;
   pointer-events: none;
+}
+
+.fp-map {
+  position: absolute;
+  margin: 0;
+  transform-origin: 0 0;
+}
+.fp-map canvas {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.fp-map figcaption {
+  margin-top: 6px;
+  font: 11px/1 var(--mono);
+  color: var(--muted);
+  text-align: center;
+}
+
+.fp-merged {
+  position: absolute;
+  width: 54px;
+  height: 54px;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--ink);
+  border-radius: 4px;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--ink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ink) 1px, transparent 1px);
+  background-size: 33.4% 33.4%;
+  background-position: -1px -1px;
 }
 
 /* ---------- Page view ---------- */

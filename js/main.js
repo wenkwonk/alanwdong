@@ -4,9 +4,7 @@ import { createStage } from './stage.js';
 import { createTiles } from './tiles.js';
 import { createSections } from './sections.js';
 import { createNetwork } from './network.js';
-import { rasterize } from './raster.js';
-import { paint, theme } from './paint.js';
-import { sweep } from './sweep.js';
+import { forwardPass } from './forward.js';
 
 const $ = (sel) => document.querySelector(sel);
 const stageEl = $('#stage');
@@ -20,23 +18,21 @@ for (const el of document.querySelectorAll('[data-text]')) el.textContent = SITE
 
 createStage(canvas, SITE.name);
 const tiles = createTiles($('#tiles'), LAYERS, [networkEl, stageEl], addLayer);
-const sections = createSections($('#sections'), LAYERS, (id) => { addLayer(id); run(); });
+const sections = createSections($('#sections'), LAYERS, moreDetail);
 const network = createNetwork(networkEl, LAYERS, { onRun: run, onRemove: removeLayer, onReset: reset });
-const sectionFor = Object.fromEntries(sections.sections.map((s) => [s.layer, s]));
 
 // The whole UI state: the layers in your network, in the order added.
-// `applied` marks the ones that have run. With nothing applied the stage
-// shows the name; otherwise it shows a section for every layer that has run,
-// at a depth equal to how many times it has run.
+// `applied` marks the ones included in the last run. The page shows a section
+// for every applied layer, at a depth equal to how many times it appears.
 let stack = [];
 let nextKey = 0;
-let running = null;   // key of the layer being applied right now
+let running = false;
+let showName = false;   // during a run: show the name even if layers applied
 const applied = (id) => stack.filter((l) => l.id === id && l.applied).length;
-const inNetwork = (id) => stack.filter((l) => l.id === id).length;
-// Run order: conv layers as added, output layers (softmax) last.
+// Network order: conv layers as added, output layers (softmax) last.
 const ordered = () => [...stack.filter((l) => !LAYERS[l.id].output), ...stack.filter((l) => LAYERS[l.id].output)];
 
-// Animations run one at a time; anything requested meanwhile waits its turn.
+// Runs and other changes happen one at a time.
 let queue = Promise.resolve();
 const enqueue = (fn) => (queue = queue.then(fn, fn));
 
@@ -46,29 +42,96 @@ function addLayer(id) {
   announce(`Added ${LAYERS[id].label} to your network. Press Run to apply it.`);
 }
 
-// Apply every pending layer in order: the tile flies from its plate onto the
-// stage, then the kernel sweeps across and reveals the new page.
+// A forward pass of the whole network over the name: split into feature maps,
+// convolve, pool, merge, and generate the page.
 function run() {
   enqueue(async () => {
-    for (let next; (next = ordered().find((l) => !l.applied));) {
-      running = next.key;
+    if (!stack.some((l) => !l.applied)) return;
+    running = true;
+    const finish = () => {
+      for (const l of stack) l.applied = true;
+      showName = false;
       update();
-      if (!reducedMotion()) await tiles.fly(next.id, network.plateRect(next.key), center(visibleRect(stageEl)));
-      await convolveInto(next);
+    };
+
+    if (reducedMotion()) {
+      finish();
+    } else {
+      if (stack.some((l) => l.applied)) {
+        // Re-run: collapse the page back into the name first.
+        showName = true;
+        window.scrollTo({ top: 0 });
+        crossfade();
+        await sleep(300);
+      } else {
+        update();
+      }
+
+      // One channel per conv kernel; repeats deepen that channel.
+      const channels = [];
+      for (const l of ordered()) {
+        if (LAYERS[l.id].output) continue;
+        const ch = channels.find((c) => c.id === l.id);
+        if (ch) ch.count++;
+        else channels.push({ id: l.id, count: 1, key: l.key });
+      }
+      for (const ch of channels) ch.from = network.plateRect(ch.key);
+
+      await forwardPass({
+        canvas,
+        area: mapArea(),
+        channels,
+        softmax: stack.some((l) => LAYERS[l.id].output),
+        fly: tiles.fly,
+        generate: (point, instant) => {
+          finish();
+          window.scrollTo({ top: 0 });
+          if (!instant) return growFrom(point);
+        },
+      });
     }
-    running = null;
+
+    running = false;
     update();
+    const names = [...new Set(ordered().map((l) => sectionFor(l.id).title))];
+    announce(`Network ran. Showing ${names.join(', ')}.`);
   });
 }
 
-// Bottom nav: add whatever that section needs for full depth, and run.
+// The page grows out of the merged feature map as an expanding circle.
+function growFrom(point) {
+  const s = stageEl.getBoundingClientRect();
+  const x = point.x - s.left, y = point.y - s.top;
+  const r = Math.hypot(Math.max(x, s.width - x), Math.max(y, window.innerHeight - s.top));
+  const a = stageEl.animate([{ clipPath: `circle(0px at ${x}px ${y}px)` }, { clipPath: `circle(${r}px at ${x}px ${y}px)` }],
+    { duration: 700, easing: 'cubic-bezier(.4,0,.2,1)' });
+  return a.finished.catch(() => {});
+}
+
+// Bottom nav: the fast path. Add what the section needs for full depth and
+// apply the whole network at once, without the animation.
 function openFully(sectionId) {
   const sec = sections.sections.find((s) => s.id === sectionId);
-  const max = sections.maxDepth(sectionId);
-  if (applied(sec.layer) >= max) return enqueue(() => scrollToSection(sectionId, 'start'));
-  while (inNetwork(sec.layer) < max) stack.push({ id: sec.layer, key: nextKey++, applied: false });
-  update();
-  run();
+  enqueue(async () => {
+    while (stack.filter((l) => l.id === sec.layer).length < sections.maxDepth(sectionId)) {
+      stack.push({ id: sec.layer, key: nextKey++, applied: false });
+    }
+    applyNow();
+    await scrollToSection(sectionId, 'start');
+  });
+}
+
+// "More detail" in a section: one more of its layer, applied at once.
+function moreDetail(id) {
+  enqueue(() => {
+    stack.push({ id, key: nextKey++, applied: false });
+    applyNow();
+  });
+}
+
+function applyNow() {
+  for (const l of stack) l.applied = true;
+  crossfade();
 }
 
 function removeLayer(key) {
@@ -91,56 +154,13 @@ function reset() {
   });
 }
 
-// Rasterize what is on screen (the name, or the page) and convolve it with
-// the layer's kernel. Then build the new page underneath, hidden behind a
-// clip that opens up wherever the sweeping kernel has passed.
-async function convolveInto(entry) {
-  const layer = LAYERS[entry.id];
-  const pageMode = stack.some((l) => l.applied);
-
-  if (reducedMotion()) {
-    entry.applied = true;
-    update();
-  } else {
-    const before = visibleRect(stageEl);
-    let scale = Math.min(window.devicePixelRatio || 1, 2);
-    scale = Math.min(scale, Math.sqrt(2.5e6 / (before.width * before.height))); // cap work
-    const src = rasterize(stageEl, before, scale);
-    const out = layer.run(src.buf, src.w, src.h, scale * (pageMode ? 0.8 : 2), src.buf);
-    const colors = theme();
-
-    document.documentElement.classList.add('locked');
-    stageEl.style.clipPath = 'inset(0 0 100% 0)';
-    entry.applied = true;
-    update();
-    const r = union(before, visibleRect(stageEl));
-    const s = stageEl.getBoundingClientRect();
-
-    await sweep(r, before, paint(src.buf, src.w, src.h, colors), paint(out, src.w, src.h, colors), layer,
-      pageMode ? 1500 : 1300, (e) => {
-        // Swept area: every row above the window, plus its row up to the centre.
-        // (Everything above the region, off screen, is open too.)
-        const T = e.top - s.top, B = e.bottom - s.top, X = e.cx - s.left, F = 1e5;
-        stageEl.style.clipPath = `polygon(${-F}px ${-F}px, ${F}px ${-F}px, ${F}px ${T}px, ${X}px ${T}px, ${X}px ${B}px, ${-F}px ${B}px)`;
-      });
-
-    stageEl.style.clipPath = '';
-    document.documentElement.classList.remove('locked');
-  }
-
-  const sec = sectionFor[entry.id];
-  announce(`Applied ${layer.label}. ${sec.title}, depth ${Math.min(applied(entry.id), sections.maxDepth(sec.id))}.`);
-  await scrollToSection(sec.id, 'nearest');
-}
-
-// Non-convolution changes (removing a layer that ran, Reset) just fade.
 function crossfade() {
   update();
   if (!reducedMotion()) stageEl.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
 }
 
 function update() {
-  const pageMode = stack.some((l) => l.applied);
+  const pageMode = stack.some((l) => l.applied) && !showName;
   document.body.classList.toggle('page-mode', pageMode);
   nameView.hidden = pageMode;
   pageView.hidden = !pageMode;
@@ -153,6 +173,8 @@ function update() {
   const labels = ordered().filter((l) => l.applied).map((l) => LAYERS[l.id].label);
   canvas.setAttribute('aria-label', labels.length ? `${SITE.name}, processed by: ${labels.join(', ')}` : SITE.name);
 }
+
+const sectionFor = (layerId) => sections.sections.find((s) => s.layer === layerId);
 
 // The on-screen part of `el`, excluding fixed bars along the bottom
 // (the nav, and on narrow screens the tile tray and network strip).
@@ -167,14 +189,24 @@ function visibleRect(el) {
   return new DOMRect(b.left, top, b.width, Math.max(1, Math.min(bottom, b.bottom) - top));
 }
 
-const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+// Where the feature maps can go: the visible area between the tile column
+// and the network panel (or above the bottom bars on narrow screens).
+function mapArea() {
+  const v = visibleRect(document.body);
+  let left = 16, right = window.innerWidth - 16;
+  for (const col of document.querySelectorAll('.palette, .network')) {
+    const r = col.getBoundingClientRect();
+    if (r.width < window.innerWidth / 2) {   // a side column, not a full-width bottom bar
+      if (r.right < window.innerWidth / 2) left = Math.max(left, r.right + 24);
+      else right = Math.min(right, r.left - 24);
+    }
+  }
+  return new DOMRect(left, v.top + 16, right - left, v.height - 32);
+}
 
 // Scroll a section into view; resolves once the scroll has settled.
 function scrollToSection(id, block) {
-  if (!stack.some((l) => l.applied)) return;
   const el = sections.element(id);
-  const r = el.getBoundingClientRect();
-  if (block === 'nearest' && r.top >= 0 && r.bottom <= visibleRect(document.body).bottom) return;
   const smooth = !reducedMotion();
   el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block });
   if (!smooth) return;
@@ -186,11 +218,7 @@ function scrollToSection(id, block) {
 }
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function union(a, b) {
-  const left = Math.min(a.left, b.left), top = Math.min(a.top, b.top);
-  return new DOMRect(left, top, Math.max(a.right, b.right) - left, Math.max(a.bottom, b.bottom) - top);
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function announce(msg) {
   status.textContent = msg;

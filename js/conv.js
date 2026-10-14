@@ -105,3 +105,17 @@ export function convolveAtScale(src, w, h, f, ...kernels) {
   for (const k of kernels) small.buf = convolve(small.buf, small.w, small.h, k);
   return upsample(small, w, h);
 }
+
+// 2×2 max pooling (stride 2). Returns { buf, w, h } at half size.
+export function maxPool(src, w, h) {
+  const pw = Math.max(1, w >> 1), ph = Math.max(1, h >> 1);
+  const out = new Float32Array(pw * ph);
+  for (let y = 0; y < ph; y++) {
+    const r0 = Math.min(h - 1, 2 * y) * w, r1 = Math.min(h - 1, 2 * y + 1) * w;
+    for (let x = 0; x < pw; x++) {
+      const x0 = Math.min(w - 1, 2 * x), x1 = Math.min(w - 1, 2 * x + 1);
+      out[y * pw + x] = Math.max(src[r0 + x0], src[r0 + x1], src[r1 + x0], src[r1 + x1]);
+    }
+  }
+  return { buf: out, w: pw, h: ph };
+}

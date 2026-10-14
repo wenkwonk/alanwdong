@@ -1,7 +1,7 @@
 // The network panel: the layers you have built, drawn as a stack of plates
 // (input at the top, softmax always last), with a Run button that applies
 // the pending ones. Plates for layers that have already run are solid;
-// pending ones are dashed; the one running now is highlighted.
+// pending ones are dashed; all of them light up while the network runs.
 export function createNetwork(root, layers, { onRun, onRemove, onReset }) {
   root.innerHTML = `
     <p class="net-title">Your network</p>
@@ -23,7 +23,7 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset }) {
   const rows = new Map();   // key → <li>
 
   return {
-    // `ordered`: [{ id, key, applied }] in run order. `running`: key or null.
+    // `ordered`: [{ id, key, applied }] in run order. `running`: a run is on.
     render(ordered, running) {
       for (const row of rows.values()) row.remove();
       rows.clear();
@@ -31,7 +31,7 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset }) {
         const li = document.createElement('li');
         li.className = 'net-row';
         li.classList.toggle('is-pending', !applied);
-        li.classList.toggle('is-running', key === running);
+        li.classList.toggle('is-running', running);
         const plate = document.createElement('span');
         plate.className = `plate ${layers[id].output ? 'plate-output' : ''}`;
         plate.setAttribute('aria-hidden', 'true');
@@ -46,7 +46,7 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset }) {
         x.className = 'net-remove';
         x.textContent = '×';
         x.setAttribute('aria-label', `Remove ${layers[id].label}${applied ? '' : ' (not run yet)'}`);
-        x.disabled = running != null;
+        x.disabled = running;
         x.addEventListener('click', () => onRemove(key));
         li.append(plate, label, x);
         list.append(li);
@@ -54,11 +54,11 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset }) {
       }
       const pending = ordered.filter((l) => !l.applied).length;
       empty.hidden = ordered.length > 0;
-      runBtn.disabled = pending === 0 || running != null;
-      runBtn.textContent = running != null ? 'Running…'
+      runBtn.disabled = pending === 0 || running;
+      runBtn.textContent = running ? 'Running…'
         : pending ? `▶ Run ${pending} layer${pending > 1 ? 's' : ''}` : '▶ Run';
       resetBtn.hidden = ordered.length === 0;
-      resetBtn.disabled = running != null;
+      resetBtn.disabled = running;
     },
 
     plateRect(key) {
