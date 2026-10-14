@@ -5,8 +5,9 @@ import { paint, theme } from './paint.js';
 import { drawSweep } from './sweep.js';
 
 // Hand-set weight of the dense layer: each section's logit is this times
-// the mean of the pooled features from the maps its kernel produced (a
-// sparse, block-structured weight matrix with zero bias). Not trained.
+// the mean of the pooled features from the last-layer maps its kernel
+// produced (a sparse, block-structured weight matrix with zero bias).
+// Not trained.
 const DENSE_WEIGHT = 8;
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -15,9 +16,9 @@ const SVG = 'http://www.w3.org/2000/svg';
 // its 3×3 kernel and sums the results with equal weights, then ReLU: a real
 // multi-channel convolution whose weight tensor is hand-set (the same kernel
 // for each input channel, scaled by 1/inputs). Layer 1's only input is the
-// name. Every map from every layer is then max-pooled and concatenated (a
-// skip-connection / hypercolumn head), a dense layer + softmax scores each
-// section, and the page is generated with sections in score order.
+// name. The last layer's maps are then max-pooled and flattened, a dense
+// layer + softmax scores each section, and the page is generated with
+// sections in score order.
 //
 //   canvas     the name's <canvas>
 //   area       viewport rect to lay the feature maps out in
@@ -69,7 +70,9 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
       columns.push(col);
       prev = col.maps.map((m) => m.out);
     }
-    const head = classify(classes, maps, softmax);
+    // Only the last layer feeds the head, as in a standard CNN.
+    const last = columns.length ? columns[columns.length - 1].maps : [];
+    const head = classify(classes, last, softmax);
 
     root.className = 'fp';
     Object.assign(root.style, { left: area.left + 'px', top: area.top + 'px', width: area.width + 'px', height: area.height + 'px' });
@@ -141,18 +144,22 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
         prevCards = col.maps.map((m) => m.card);
       }
 
-      // Max-pool every map at once while they shrink; the input and the
-      // wiring fade.
-      ctl.animate(first.fig, [{ opacity: 1 }, { opacity: 0.25 }], { duration: 300 });
-      ctl.animate(svg, [{ opacity: 1 }, { opacity: 0 }], { duration: 300 });
-      for (const m of maps) {
-        m.card.ctx.imageSmoothingEnabled = false;
-        m.card.fig.style.transformOrigin = '50% 50%';   // shrink in place
-        ctl.animate(m.card.fig, [{ transform: 'none' }, { transform: 'scale(0.7)' }], { duration: 700, easing: 'ease-in-out' });
+      // The head reads only the last layer: everything before it dims.
+      const lastCards = last.map((m) => m.card);
+      for (const c of cards) {
+        if (!lastCards.includes(c)) ctl.animate(c.fig, [{ opacity: 1 }, { opacity: 0.15 }], { duration: 300 });
       }
-      const steps = Math.max(...maps.map((m) => m.levels.length));
+      ctl.animate(svg, [{ opacity: 1 }, { opacity: 0.15 }], { duration: 300 });
+
+      // Max-pool the last layer's maps in place, a level at a time.
+      for (const m of last) {
+        m.card.ctx.imageSmoothingEnabled = false;
+        m.card.fig.style.transformOrigin = '50% 50%';
+        ctl.animate(m.card.fig, [{ transform: 'none' }, { transform: 'scale(0.85)' }], { duration: 700, easing: 'ease-in-out' });
+      }
+      const steps = Math.max(...last.map((m) => m.levels.length));
       for (let i = 0; i < steps && !ctl.skipped; i++) {
-        for (const m of maps) {
+        for (const m of last) {
           const lv = m.levels[Math.min(i, m.levels.length - 1)];
           m.card.ctx.clearRect(0, 0, src.w, src.h);
           m.card.ctx.drawImage(paint(lv.buf, lv.w, lv.h, colors), 0, 0, src.w, src.h);
@@ -160,27 +167,29 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
         await ctl.wait(700 / steps);
       }
 
-      // Concatenate: every map flies into the middle.
-      await Promise.all(cards.map((c) => {
-        const r = c.fig.getBoundingClientRect();
-        const t = getComputedStyle(c.fig).transform;
-        return ctl.animate(c.fig, [
-          { transform: t === 'none' ? 'none' : t, opacity: getComputedStyle(c.fig).opacity },
-          { transform: `translate(${merge.x - center(r).x}px, ${merge.y - center(r).y}px) scale(0.08)`, opacity: 0 },
-        ], { duration: 500, easing: 'cubic-bezier(.6,0,.4,1)' });
-      }));
-    }
-
-    // Classifier head: concatenated features → dense → softmax (or logits).
-    if (head.length && !ctl.skipped) {
-      const panel = headPanel(maps, head, softmax, colors);
-      Object.assign(panel.style, { left: merge.x - area.left + 'px', top: merge.y - area.top + 'px' });
-      root.append(panel);
-      await ctl.animate(panel, [{ transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 }, { transform: 'translate(-50%, -50%)', opacity: 1 }],
-        { duration: 250, easing: 'ease-out' });
-      await Promise.all([...panel.querySelectorAll('.fp-bar i')].map((bar) =>
-        ctl.animate(bar, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 500, easing: 'ease-out' })));
-      await ctl.wait(600);
+      // Flatten: the pooled maps fly into the head's feature vector, which
+      // fills in with their actual values; then dense → softmax.
+      if (head.length && !ctl.skipped) {
+        const panel = headPanel(last, head, softmax, colors);
+        Object.assign(panel.style, { left: merge.x - area.left + 'px', top: merge.y - area.top + 'px', opacity: 0 });
+        root.append(panel);
+        const strip = center(panel.querySelector('.fp-flat').getBoundingClientRect());
+        await Promise.all(last.map((m) => {
+          const c = center(m.card.fig.getBoundingClientRect());
+          return ctl.animate(m.card.fig, [
+            { transform: 'scale(0.85)', opacity: 1 },
+            { transform: `translate(${strip.x - c.x}px, ${strip.y - c.y}px) scale(0.05)`, opacity: 0 },
+          ], { duration: 550, easing: 'cubic-bezier(.6,0,.4,1)' });
+        }));
+        for (const c of cards) ctl.animate(c.fig, [{ opacity: 0.15 }, { opacity: 0 }], { duration: 250 });
+        ctl.animate(svg, [{ opacity: 0.15 }, { opacity: 0 }], { duration: 250 });
+        panel.style.opacity = '';
+        await Promise.all([...panel.querySelectorAll('.fp-flat i')].map((cell, i) =>
+          ctl.animate(cell, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, delay: i * 14, fill: 'both' })));
+        await Promise.all([...panel.querySelectorAll('.fp-bar i')].map((bar) =>
+          ctl.animate(bar, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 500, easing: 'ease-out' })));
+        await ctl.wait(600);
+      }
     }
 
     root.remove();
@@ -206,9 +215,10 @@ function link(svg, a, b, ar, vertical) {
   return line;
 }
 
-// Dense layer + softmax over the concatenated pooled features. One class
-// (section) per kernel type, reading the features of every map that kernel
-// produced. Returns [{ section, title, z, p }] sorted by score, highest
+// Dense layer + softmax over the last layer's pooled, flattened features.
+// One class (section) per kernel type in the network; a class reads the
+// features of the last-layer maps its kernel produced, and a kernel absent
+// from the last layer gets only the bias (0). Returns [{ section, title, z, p }] sorted by score, highest
 // first; `p` is null when the network has no softmax layer.
 function classify(classes, maps, softmax) {
   const rows = classes.map((c) => {
@@ -249,7 +259,7 @@ function headPanel(maps, head, softmax, colors) {
   const table = document.createElement('div');
   table.className = 'fp-scores';
   const title = document.createElement('p');
-  title.textContent = softmax ? 'flatten → dense → softmax' : 'flatten → dense → logits';
+  title.textContent = softmax ? 'max-pool → flatten → dense → softmax' : 'max-pool → flatten → dense → logits';
   table.append(title);
   const max = Math.max(...head.map((h) => Math.abs(h.p ?? h.z)), 1e-6);
   for (const h of head) {

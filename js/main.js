@@ -54,12 +54,18 @@ function addLayer(id, point) {
     update();
     return announce(`Added ${label} as the output. Press Run to apply the network.`);
   }
-  const target = (point && network.layerAt(point.x, point.y)) ?? active;
-  if (inLayer(target) >= MAX_FILTERS) return announce(`Layer ${target + 1} is full (${MAX_FILTERS} filters). Add a layer or pick another one.`);
+  let target = (point && network.layerAt(point.x, point.y)) ?? active;
+  let created = false;
+  if (inLayer(target) >= MAX_FILTERS) {
+    // Full: start the next layer automatically (if there's room for one).
+    if (layerCount >= MAX_LAYERS) return announce(`The network is full (${MAX_LAYERS} layers of ${MAX_FILTERS}). Remove a filter first.`);
+    target = layerCount++;
+    created = true;
+  }
   stack.push({ id, key: nextKey++, applied: false, layer: target });
   active = target;
   update();
-  announce(`Added ${label} to layer ${target + 1}. Press Run to apply the network.`);
+  announce(`Added ${label} to ${created ? 'new ' : ''}layer ${target + 1}. Press Run to apply the network.`);
 }
 
 function selectLayer(i) {
