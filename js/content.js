@@ -12,6 +12,13 @@
 export const SITE = {
   name: 'Alan Dong',
   subtitle: 'AI/ML for Bio',
+  // The alternative network input: a public-domain micrograph.
+  micrograph: {
+    src: 'assets/micrograph-cdc-25235.jpg',
+    alt: 'Phase-contrast micrograph of a Clostridium botulinum microcolony',
+    credit: 'Micrograph: CDC/Dr. Lillian V. Holdeman, PHIL #25235 (public domain)',
+    href: 'https://wwwn.cdc.gov/phil/Details.aspx?pid=25235',
+  },
 };
 
 export const SECTIONS = [

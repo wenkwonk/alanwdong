@@ -31,9 +31,12 @@ const SVG = 'http://www.w3.org/2000/svg';
 //              out of rect (the score panel, or null); ranking is section
 //              ids, highest score first
 //   instant    skip all animation (still computes everything)
+//   mapsOnly   stop after the conv layers and leave the feature-map diagram
+//              up until Back is pressed (no head, no page); `generate` and
+//              `classes` are unused. Used for the micrograph input.
 //
 // Any click or keypress skips to the end.
-export async function forwardPass({ canvas, area, net, classes, softmax, fly, generate, instant }) {
+export async function forwardPass({ canvas, area, net, classes, softmax, fly, generate, instant, mapsOnly }) {
   const ctl = createSkip();
   if (instant) ctl.skip();
   const root = document.createElement('div');
@@ -73,7 +76,7 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
     }
     // Only the last layer feeds the head, as in a standard CNN.
     const last = columns.length ? columns[columns.length - 1].maps : [];
-    const head = classify(classes, last, softmax);
+    const head = mapsOnly ? [] : classify(classes, last, softmax);
 
     root.className = 'fp';
     Object.assign(root.style, { left: area.left + 'px', top: area.top + 'px', width: area.width + 'px', height: area.height + 'px' });
@@ -83,7 +86,9 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
     const cards = [];
     let panel = null;   // the head, once shown
 
-    if (maps.length && !ctl.skipped) {
+    // (On the micrograph the diagram *is* the result, so build it even when
+    // skipping: every animation then just jumps to its end.)
+    if (maps.length && (!ctl.skipped || mapsOnly)) {
       const ar = src.w / src.h;
       const { slots: grid, head: lane } = layout([1, ...columns.map((c) => c.maps.length)], area, ar, head.length > 0);
       const svg = document.createElementNS(SVG, 'svg');
@@ -143,6 +148,11 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
           for (const m of col.maps) drawSweep(m.card.ctx, col.input, m.output, LAYERS[m.id], t, m.card.k, colors);
         });
         prevCards = col.maps.map((m) => m.card);
+      }
+
+      if (mapsOnly) {
+        await backButton(area);
+        return;   // `finally` removes the diagram
       }
 
       // The head reads only the last layer: everything before it dims.
@@ -230,6 +240,27 @@ export async function forwardPass({ canvas, area, net, classes, softmax, fly, ge
     canvas.parentElement.style.visibility = '';
     ctl.dispose();
   }
+}
+
+// A Back button under the diagram; resolves on click or Escape.
+function backButton(area) {
+  return new Promise((resolve) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fp-back';
+    btn.textContent = '← Back';
+    Object.assign(btn.style, { left: area.left + area.width / 2 + 'px', top: area.top + area.height - 8 + 'px' });
+    document.body.append(btn);
+    btn.focus();
+    const done = () => {
+      window.removeEventListener('keydown', onKey);
+      btn.remove();
+      resolve();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done(); };
+    btn.addEventListener('click', done);
+    window.addEventListener('keydown', onKey);
+  });
 }
 
 // A faint line from one map to another (right edge → left edge, or bottom →

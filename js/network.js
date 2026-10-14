@@ -11,13 +11,15 @@ const DRAG_THRESHOLD = 4;       // px before a press on a filter becomes a drag
 // can be dragged to another layer, or moved with ↑/↓ when focused. Filters
 // included in the last run are solid; new ones are dashed; everything lights
 // up while the network runs.
-export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, onSelect, onAddLayer }) {
+export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, onSelect, onAddLayer, onInput, microSrc }) {
   root.innerHTML = `
     <p class="net-title">Your network</p>
     <div class="net-flow">
       <div class="net-row net-input">
         <span class="plate plate-input" aria-hidden="true"></span>
-        <span class="net-label"><span class="net-kind">input · </span>name</span>
+        <button type="button" class="net-input-toggle" aria-label="Network input: name. Switch to micrograph.">
+          <span class="net-kind">input · </span><span class="net-input-name">name</span> <span class="net-input-swap" aria-hidden="true">⇄</span>
+        </button>
       </div>
       <ol class="net-layers" aria-label="Layers"></ol>
       <button type="button" class="net-add">+ Layer</button>
@@ -33,6 +35,12 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, 
   runBtn.addEventListener('click', onRun);
   resetBtn.addEventListener('click', onReset);
   addBtn.addEventListener('click', onAddLayer);
+  const inputBtn = root.querySelector('.net-input-toggle');
+  const inputPlate = root.querySelector('.plate-input');
+  // Absolute URL: a relative url() in a custom property would resolve
+  // against the stylesheet's folder, not the page.
+  inputPlate.style.setProperty('--micro', `url("${new URL(microSrc, document.baseURI).href}")`);
+  inputBtn.addEventListener('click', onInput);
   const rows = new Map();   // key → row element
 
   function filterRow({ id, key, applied }, running, where) {
@@ -75,8 +83,13 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, 
 
   return {
     // state: { filters: [{ id, key, applied, layer }], outputs: [...],
-    //          layerCount, active, running, changed }
-    render({ filters, outputs, layerCount, active, running, changed }) {
+    //          layerCount, active, running, changed, input: 'name'|'micro' }
+    render({ filters, outputs, layerCount, active, running, changed, input }) {
+      const micro = input === 'micro';
+      inputPlate.classList.toggle('is-micro', micro);
+      inputBtn.querySelector('.net-input-name').textContent = micro ? 'micrograph' : 'name';
+      inputBtn.setAttribute('aria-label', `Network input: ${micro ? 'micrograph' : 'name'}. Switch to ${micro ? 'name' : 'micrograph'}.`);
+      inputBtn.disabled = running;
       const focusedKey = [...rows].find(([, r]) => r === document.activeElement)?.[0];
       rows.clear();
       groups.replaceChildren();
@@ -113,11 +126,12 @@ export function createNetwork(root, layers, { onRun, onRemove, onReset, onMove, 
       if (focusedKey != null) rows.get(focusedKey)?.focus();
 
       const all = [...filters, ...outputs];
-      const needsRun = all.some((l) => !l.applied) || changed;
+      // On the micrograph, Run only shows feature maps, so any conv layer will do.
+      const needsRun = micro ? filters.length > 0 : all.some((l) => !l.applied) || changed;
       addBtn.hidden = layerCount >= MAX_LAYERS;
       addBtn.disabled = running;
       runBtn.disabled = !needsRun || running || !filters.length && !outputs.length;
-      runBtn.textContent = running ? 'Running…' : '▶ Run';
+      runBtn.textContent = running ? 'Running…' : micro ? '▶ Run on micrograph' : '▶ Run';
       resetBtn.hidden = all.length === 0;
       resetBtn.disabled = running;
     },
