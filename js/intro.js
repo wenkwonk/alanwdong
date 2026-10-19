@@ -41,8 +41,7 @@ async function play() {
   // is drawn into, and WebGL then refuses the card texture.
   const paper = await loadImage('assets/paper.png').catch(() => null);
 
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const startWidth = window.innerWidth;
   const rect = card.getBoundingClientRect();
   const W = rect.width;
   const H = rect.height;
@@ -50,13 +49,19 @@ async function play() {
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(dpr);
-  renderer.setSize(vw, vh, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
   const canvas = renderer.domElement;
   canvas.className = 'intro-canvas';
   canvas.setAttribute('aria-hidden', 'true');
   document.body.append(canvas);
+  // Size the scene to the canvas as laid out, not to innerWidth/innerHeight:
+  // on iOS Safari a fixed full-screen box can be taller than innerHeight
+  // (toolbars), and the frame would stretch to fit it, missing the card.
+  const box = canvas.getBoundingClientRect();
+  const vw = box.width;
+  const vh = box.height;
+  renderer.setSize(vw, vh, false);
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -70,7 +75,7 @@ async function play() {
   const camera = new THREE.PerspectiveCamera(fov, vw / vh, 1, dist * 6);
   camera.position.set(0, 0, dist);
 
-  const final = new THREE.Vector3(rect.left + W / 2 - vw / 2, vh / 2 - (rect.top + H / 2), 0);
+  const final = new THREE.Vector3(rect.left - box.left + W / 2 - vw / 2, vh / 2 - (rect.top - box.top + H / 2), 0);
 
   // ---- Case ----------------------------------------------------------
   // A clamshell like the one in the film: a base tray with a rounded barrel
@@ -283,7 +288,7 @@ async function play() {
 
   // Any click or key skips straight to the card, as does a width change
   // (rotation). Height-only resizes are mobile toolbars; ignore those.
-  const onResize = () => { if (window.innerWidth !== vw) finish(); };
+  const onResize = () => { if (window.innerWidth !== startWidth) finish(); };
   addEventListener('pointerdown', finish);
   addEventListener('keydown', finish);
   addEventListener('resize', onResize);
