@@ -1,11 +1,3 @@
-@font-face {
-  font-family: 'Inter';
-  src: url('../assets/fonts/inter-latin-700.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
@@ -17,58 +9,125 @@ body {
   justify-content: center;
   padding: 24px 16px;
   background: #000;
-  color: #fff;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #1f1f1f;
+  /* Copperplate sets lowercase as small caps; elsewhere small caps are synthesized. */
+  font-family: Copperplate, 'Copperplate Gothic Bold', 'Copperplate Gothic', 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  font-variant-caps: small-caps;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Cotton card stock at 3.5 x 2 in. Type scales with the card's width (cqw);
+   the ratio is a minimum so text never clips on small screens. */
+.card {
+  container-type: inline-size;
+  width: 100%;
+  max-width: 640px;
+  aspect-ratio: 7 / 4;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  /* Equal outer rows keep the name block at the card's true center. */
+  grid-template-rows: 1fr auto 1fr;
+  grid-template-areas:
+    "focus orgs"
+    "who   who"
+    "contact contact";
+  column-gap: 16px;
+  row-gap: 14px;
+  /* Margins measured off the card's own width (% padding would use the page's). */
+  --w: min(640px, 100vw - 32px);
+  padding: calc(var(--w) * 0.06) calc(var(--w) * 0.07) calc(var(--w) * 0.055);
+  background: #f7f6f2 url('../assets/paper.svg');
+  background-blend-mode: multiply;
+  box-shadow: 0 30px 70px rgb(255 255 255 / 0.06), 0 2px 4px rgb(0 0 0 / 0.5);
+  letter-spacing: 0.02em;
+  /* Letterpress: a light lip under each stroke and a faint shadow above. */
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.85), 0 -0.5px 0 rgb(0 0 0 / 0.25);
+}
+
+p { margin: 0; }
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 3px;
+}
+
+.focus,
+.orgs {
+  align-self: start;
+  font-size: max(12px, 3.3cqw);
+  line-height: 1.2;
+}
+.focus { grid-area: focus; }
+.orgs {
+  grid-area: orgs;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.who {
+  grid-area: who;
   text-align: center;
 }
 
-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
 h1 {
-  margin: 0 0 6px;
-  font: 700 clamp(40px, 9vw, 72px)/1.05 'Inter', system-ui, sans-serif;
-  letter-spacing: -0.02em;
+  margin: 0 0 0.25em;
+  font-size: max(18px, 4.2cqw);
+  font-weight: inherit;
+  line-height: 1.1;
 }
+.surname { text-transform: uppercase; }
 
-p {
-  margin: 0;
-  font-size: 18px;
-  color: rgb(255 255 255 / 0.85);
+.who p {
+  font-size: max(11px, 2.7cqw);
+  line-height: 1.3;
 }
 
 .contact {
+  grid-area: contact;
+  align-self: end;
   list-style: none;
-  margin: 18px 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 0.15em;
+  font-size: max(11px, 2.9cqw);
+  line-height: 1.25;
+}
+.contact li:last-child { flex-basis: 100%; text-align: center; }
+.contact li:nth-child(2)::before {
+  content: "\00b7";
+  padding: 0 0.6em;
 }
 
-p a {
-  color: inherit;
-  text-decoration: none;
-  border-bottom: 1px solid rgb(255 255 255 / 0.25);
+@media (max-width: 480px) {
+  .contact { flex-direction: column; align-items: center; }
+  .contact li:nth-child(2)::before { content: none; }
 }
-p a:hover { border-bottom-color: #fff; }
 
-.contact a {
-  color: rgb(255 255 255 / 0.7);
-  font-size: 15px;
-  text-decoration: none;
-  border-bottom: 1px solid rgb(255 255 255 / 0.25);
-  padding-bottom: 1px;
+/* Load intro (js/intro.js): the card is drawn out of a steel case rendered
+   in WebGL. While it plays, the real card keeps its layout but stays hidden. */
+.intro .card { visibility: hidden; }
+
+.intro-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
-.contact a:hover { color: #fff; border-bottom-color: #fff; }
-p a:focus-visible,
-.contact a:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 4px;
-  border-radius: 2px;
-}
+.intro-canvas.shown { opacity: 1; }
