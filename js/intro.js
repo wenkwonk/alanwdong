@@ -58,10 +58,12 @@ async function play() {
   // Size the scene to the canvas as laid out, not to innerWidth/innerHeight:
   // on iOS Safari a fixed full-screen box can be taller than innerHeight
   // (toolbars), and the frame would stretch to fit it, missing the card.
+  // Then pin that size in pixels: iOS resizes the box again as its toolbars
+  // settle, which would stretch every frame vertically.
   const box = canvas.getBoundingClientRect();
   const vw = box.width;
   const vh = box.height;
-  renderer.setSize(vw, vh, false);
+  renderer.setSize(vw, vh);
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
