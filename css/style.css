@@ -6,53 +6,40 @@
   font-display: swap;
 }
 
-:root {
-  --ink: #fff;
-  --soft: rgb(255 255 255 / 0.85);
-  --muted: rgb(255 255 255 / 0.62);
-  --faint: rgb(255 255 255 / 0.35);
-  --line: rgb(255 255 255 / 0.32);
-  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --name: 'Inter', system-ui, sans-serif;
-}
-
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: #000;
-  color: var(--ink);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-
-a { color: inherit; }
-
-/* ---------- The prediction (top) ---------- */
-
-.hero,
-.outro {
   min-height: 100vh;
   min-height: 100svh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   padding: 24px 16px;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
   text-align: center;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
 h1 {
   margin: 0 0 6px;
-  font: 700 clamp(40px, 9vw, 72px)/1.05 var(--name);
+  font: 700 clamp(40px, 9vw, 72px)/1.05 'Inter', system-ui, sans-serif;
   letter-spacing: -0.02em;
 }
 
-.hero > p {
+p {
   margin: 0;
   font-size: 18px;
-  color: var(--soft);
+  color: rgb(255 255 255 / 0.85);
 }
 
 .contact {
@@ -64,328 +51,24 @@ h1 {
   gap: 8px;
 }
 
+p a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(255 255 255 / 0.25);
+}
+p a:hover { border-bottom-color: #fff; }
+
 .contact a {
-  color: var(--muted);
+  color: rgb(255 255 255 / 0.7);
   font-size: 15px;
   text-decoration: none;
-  border-bottom: 1px solid var(--faint);
+  border-bottom: 1px solid rgb(255 255 255 / 0.25);
   padding-bottom: 1px;
 }
-.contact a:hover { color: var(--ink); border-bottom-color: var(--ink); }
-
-.visitor {
-  margin-top: 36px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  font: 12px/1 var(--mono);
-}
-.visitor-label { color: var(--muted); }
-.visitor-choices { display: inline-flex; gap: 6px; }
-.visitor-choices button {
-  padding: 7px 12px;
-  font: inherit;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--faint);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
-}
-.visitor-choices button:hover { color: var(--ink); border-color: var(--muted); }
-.visitor-choices button[aria-pressed="true"] { color: #000; background: #fff; border-color: #fff; }
-
-.hero > .equation {
-  margin-top: 22px;
-  font: 14px/1.4 var(--mono);
-  color: var(--muted);
-}
-
-.hero > .scroll-cue {
-  font: 12px/1 var(--mono);
-  color: var(--faint);
-}
-
-/* ---------- The trees ---------- */
-
-.tree {
-  position: relative;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 110px 24px;
-}
-
-.branches {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-.branches path {
-  fill: none;
-  stroke: rgb(255 255 255 / 0.22);
-  stroke-width: 1;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-}
-/* The route this person takes through the tree. */
-.branches path.is-path { stroke: rgb(255 255 255 / 0.85); stroke-width: 1.5; }
-
-.tree-root {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
-}
-
-.tree-fn {
-  font: 13px/1 var(--mono);
-  color: var(--muted);
-}
-
-.tree-root h2 {
-  margin: 0;
-  font: 700 30px/1.15 var(--name);
-  letter-spacing: -0.01em;
-}
-
-.tree-note {
-  font: italic 12px/1 var(--mono);
-  color: var(--muted);
-}
-
-.tree-nodes {
-  list-style: none;
-  margin: 64px 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
-  gap: 32px;
-  align-items: start;
-}
-
-.node {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.split {
-  /* Sits just right of the branch line coming down to the node. */
-  align-self: flex-start;
-  position: relative;
-  left: 50%;
-  margin-left: 8px;
-  margin-bottom: 8px;
-  font: 11px/1 var(--mono);
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.node-box {
-  max-width: 100%;
-  font: inherit;
-  color: inherit;
-  padding: 10px 14px;
-  text-align: center;
-  background: #000;
-  border: 1px solid rgb(255 255 255 / 0.55);
-  border-radius: 10px;
-}
-button.node-box { cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s, opacity 0.45s, transform 0.45s; }
-button.node-box:hover { border-color: #fff; }
-.node-box h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-.node-meta {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--muted);
-}
-
-.leaf {
-  margin-top: 30px;
-  max-width: 30ch;
-  font-size: 15px;
-  line-height: 1.55;
-  text-align: center;
-  color: var(--soft);
-}
-.leaf-summary { margin: 0; }
-.leaf-link { margin: 8px 0 0; font-size: 14px; }
-.leaf-link a {
-  color: var(--ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--faint);
-}
-.leaf-link a:hover { border-bottom-color: var(--ink); }
-.more-toggle {
-  margin-top: 8px;
-  padding: 2px 0;
-  font: 12px/1 var(--mono);
-  color: var(--muted);
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-.more-toggle:hover { color: var(--ink); }
-.leaf.open { max-width: 40ch; }
-.leaf-more {
-  list-style: disc;
-  margin: 10px 0 0;
-  padding-left: 18px;
-  text-align: left;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.leaf-more li + li { margin-top: 6px; }
-.leaf-more:not([hidden]) { animation: open 0.35s ease both; }
-@keyframes open { from { opacity: 0; transform: translateY(-4px); } }
-
-.leaf-value {
-  margin: 8px 0 0;
-  font: 12px/1 var(--mono);
-  color: var(--faint);
-}
-
-/* The node on the path: solid box, its leaf value lit. */
-.node.is-path .node-box { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
-.node.is-path .more-toggle {
-  margin-top: 8px;
-  padding: 2px 0;
-  font: 12px/1 var(--mono);
-  color: var(--muted);
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-.more-toggle:hover { color: var(--ink); }
-.leaf.open { max-width: 40ch; }
-.leaf-more {
-  list-style: disc;
-  margin: 10px 0 0;
-  padding-left: 18px;
-  text-align: left;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.leaf-more li + li { margin-top: 6px; }
-.leaf-more:not([hidden]) { animation: open 0.35s ease both; }
-@keyframes open { from { opacity: 0; transform: translateY(-4px); } }
-
-.leaf-value { color: var(--ink); }
-.leaf-details {
-  list-style: disc;
-  margin: 10px 0 0;
-  padding-left: 16px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.leaf-details li + li { margin-top: 6px; }
-
-/* Things appear as their branch reaches them. */
-.reveal {
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.45s ease, transform 0.45s ease;
-}
-.reveal.on { opacity: 1; transform: none; }
-
-/* ---------- The running sum ---------- */
-
-.running-sum {
-  position: fixed;
-  left: 50%;
-  bottom: 14px;
-  margin: 0;
-  padding: 6px 12px;
-  transform: translateX(-50%);
-  font: 13px/1 var(--mono);
-  color: var(--faint);
-  white-space: nowrap;
-  background: rgb(0 0 0 / 0.75);
-  border-radius: 999px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-}
-.running-sum.on { opacity: 1; }
-.running-sum b { color: var(--ink); font-weight: 600; }
-.running-sum i { font-style: normal; color: var(--muted); }
-
-.running-sum span { transition: color 0.3s ease; }
-.running-sum span.on { color: var(--ink); }
-
-/* ---------- The total (bottom) ---------- */
-
-.outro-eq {
-  margin: 0;
-  font: 14px/1.4 var(--mono);
-  color: var(--muted);
-}
-.outro-name {
-  margin: 4px 0;
-  font: 700 clamp(36px, 7vw, 56px)/1.1 var(--name);
-  letter-spacing: -0.02em;
-}
-.outro-next {
-  margin: 0;
-  max-width: 52ch;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--soft);
-}
-
-/* ---------- Focus ---------- */
-
-a:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--ink);
+.contact a:hover { color: #fff; border-bottom-color: #fff; }
+p a:focus-visible,
+.contact a:focus-visible {
+  outline: 2px solid #fff;
   outline-offset: 4px;
   border-radius: 2px;
-}
-
-/* ---------- Narrow screens: each tree is a vertical branch ---------- */
-
-@media (max-width: 720px) {
-  .tree { padding: 72px 16px; }
-  .tree-root { align-items: flex-start; text-align: left; }
-  .tree-root h2 { font-size: 26px; }
-  .tree-nodes {
-    grid-template-columns: 1fr;
-    margin-top: 28px;
-    padding-left: 26px;
-    gap: 28px;
-  }
-  .node { align-items: flex-start; }
-  .node-box { text-align: left; }
-  .leaf { margin-top: 12px; max-width: none; text-align: left; }
-  .split { left: auto; margin-left: 0; margin-bottom: 6px; }
-  .running-sum {
-    left: 0;
-    right: 0;
-    bottom: 0;
-    transform: none;
-    padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
-    font-size: 12px;
-    text-align: center;
-    background: #000;
-    border-top: 1px solid rgb(255 255 255 / 0.12);
-    border-radius: 0;
-  }
-  body { padding-bottom: 48px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
