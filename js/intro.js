@@ -8,7 +8,6 @@ import * as THREE from 'three';
 const root = document.documentElement;
 
 if (root.classList.contains('intro')) {
-  clearTimeout(window.introFailsafe);
   play().catch((err) => {
     console.error(err);
     root.classList.remove('intro');
@@ -38,7 +37,9 @@ const lerp = (a, b, x) => a + (b - a) * x;
 async function play() {
   const card = document.querySelector('.card');
   await document.fonts.ready;
-  const paper = await loadImage('assets/paper.svg').catch(() => null);
+  // A PNG, not the SVG the page uses: Safari taints any canvas an SVG filter
+  // is drawn into, and WebGL then refuses the card texture.
+  const paper = await loadImage('assets/paper.png').catch(() => null);
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -188,6 +189,9 @@ async function play() {
   function frame(now) {
     if (done) return;
     if (start === null) {
+      // The failsafe covers setup too; if it already fired, the card is up.
+      clearTimeout(window.introFailsafe);
+      if (!root.classList.contains('intro')) return finish();
       start = now;
       canvas.classList.add('shown');
     }
